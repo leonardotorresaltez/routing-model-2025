@@ -2,6 +2,9 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+
+__all__ = ['GraphEncoder', 'GraphPointer', 'GraphPointerNetwork']
+
 # ---------------------------
 # Simple Graph Encoder (GNN-like)
 # ---------------------------
@@ -49,30 +52,4 @@ class GraphPointerNetwork(nn.Module):
         h = self.encoder(x, adj)
         probs = self.pointer(h)
         return probs
-
-# ---------------------------
-#  example
-# ---------------------------
-N = 4  # number of nodes
-in_dim = 3
-hidden_dim = 8
-
-# Node features
-x = torch.randn(N, in_dim)
-print("Input features:", x)
-
-# Adjacency matrix (simple graph)
-adj = torch.tensor([
-    [1, 1, 0, 0],
-    [1, 1, 1, 0],
-    [0, 1, 1, 1],
-    [0, 0, 1, 1]
-], dtype=torch.float32)
-
-model = GraphPointerNetwork(in_dim, hidden_dim)
-
-probs = model(x, adj)
-selected_node = torch.argmax(probs).item()
-
-print("Pointer probabilities:", probs)
-print("Selected node:", selected_node)    
+    

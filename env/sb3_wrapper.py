@@ -4,10 +4,12 @@ Wrapper for SimpleFleetRoutingEnv to work with Stable Baselines 3.
 Handles action masking and observation conversion for PPO/A2C training.
 """
 
+from typing import Any, Dict, Tuple
+
 import gymnasium as gym
-from gymnasium import spaces
 import numpy as np
-from typing import Dict, Any, Tuple
+from gymnasium import spaces
+
 from env.routing_env_simple import SimpleFleetRoutingEnv
 
 
@@ -34,8 +36,8 @@ class FleetRoutingSB3Wrapper(gym.Wrapper):
         self._last_feasibility_mask = None
         
         self.observation_space = self._build_observation_space()
-        self.action_space = spaces.MultiDiscrete([num_customers + 1] * num_trucks)
-    
+        self.action_space = spaces.MultiDiscrete([num_customers + 1] * num_trucks) #  C choices x T trucks, choices per truck
+           
     def _build_observation_space(self) -> spaces.Box:
         """
         Build a flat Box observation space for neural network input.

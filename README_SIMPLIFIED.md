@@ -286,21 +286,58 @@ for episode in range(num_episodes):
 
 ```
 env/
-├── types.py                    # Customer, Truck, Depot dataclasses
-├── utils.py                    # Distance, feasibility checks
-├── routing_env_simplified.py   # FleetRoutingEnv (Gymnasium)
-└── config.py                   # Problem generation
+├── types_simple.py             # Customer, Truck, Depot dataclasses
+├── utils_simple.py             # Distance, feasibility checks
+├── routing_env_simple.py       # SimpleFleetRoutingEnv (Gymnasium)
+├── data_generation.py          # Problem instance generation
+└── sb3_wrapper.py              # Gymnasium → SB3 wrapper (flattens observations)
 
 model/
-├── policy.py                   # Transformer + masked actions
-└── train.py                    # PPO/A2C training loop
+├── tsp_agent/
+│   └── graph_pointer_network_model.py  # GraphEncoder, GraphPointer, GraphPointerNetwork
+├── graph_converter.py          # Convert flat obs → graph representation
+├── graph_pointer_policy.py     # GraphAwareFeaturesExtractor + GraphPointerPolicy
+└── (other baseline models)
 
-main.py                         # Entry point
+tests/
+├── test_graph_pointer_integration.py   # Graph conversion & policy tests
+├── test_environment.py                 # Environment fundamentals
+├── final_integration_test.py           # End-to-end system tests
+├── run_all_tests.py                    # Master test runner
+└── README.md                           # Test documentation
+
+train_ppo.py                    # PPO training script
+baselines.py                    # Greedy baseline policies
 ```
 
 ---
 
-## 11. Extensions (Future)
+## 11. Testing
+
+All tests are organized in the `tests/` directory. Run tests with:
+
+### Run all tests (recommended)
+```bash
+python -m tests.run_all_tests
+```
+
+### Run specific test suites
+```bash
+python -m tests.test_graph_pointer_integration      # Graph Pointer Network tests
+python -m tests.test_environment                    # Environment fundamentals
+python -m tests.final_integration_test              # End-to-end integration
+```
+
+**Expected Results**:
+- ✅ Graph Pointer integration: 9/9 tests pass
+- ✅ Environment tests: 4/4 test functions pass
+- ✅ Final integration: 5/6 tests pass (PPO model loading skipped if no trained model exists)
+
+For detailed test documentation, see `tests/README.md`
+
+---
+
+## 12. Extensions (Future)
 
 - **V2**: Add time windows (customer availability)
 - **V3**: Add driver hour constraints
@@ -310,7 +347,7 @@ main.py                         # Entry point
 
 ---
 
-## 12. Common Issues & Solutions
+## 13. Common Issues & Solutions
 
 | Issue | Root Cause | Solution |
 |-------|-----------|----------|
@@ -321,7 +358,7 @@ main.py                         # Entry point
 
 ---
 
-## 13. Quick Start Example
+## 14. Quick Start Example
 
 ```python
 from env.routing_env_simplified import FleetRoutingEnv
@@ -403,3 +440,21 @@ The Loop:
 
 
 
+## 15. Suggested Workflow
+
+### 1. Run all tests
+```bash
+python -m tests.run_all_tests
+```
+
+### 2. Train a policy
+```bash
+python train_ppo.py --timesteps 5000 --customers 15 --trucks 4
+```
+
+### 3. Evaluate performance
+```bash
+python train_ppo.py --timesteps 100000 --customers 20 --trucks 6 --lr 3e-4
+```
+
+For more training options, see `train_ppo.py --help`

@@ -16,6 +16,7 @@ from baselines import greedy_nearest_customer_policy
 from env.data_generation import generate_problem_instance
 from env.routing_env_simple import SimpleFleetRoutingEnv
 from env.sb3_wrapper import FleetRoutingSB3Wrapper
+from model.graph_pointer_policy import GraphPointerPolicy
 
 
 def make_env(customers, trucks, depots, max_steps=500):
@@ -157,9 +158,16 @@ def train(
     #         Selects the action with highest probability
 
     
-    model = PPO( # AGENT!   
-        policy="MlpPolicy",  # <-- The POLICY
-        env=env, # The agent interacts with the environment
+    policy_kwargs = dict(
+        num_trucks=num_trucks,
+        num_customers=num_customers,
+        hidden_dim=64
+    )
+    
+    model = PPO(
+        policy=GraphPointerPolicy,
+        env=env,
+        policy_kwargs=policy_kwargs,
         learning_rate=learning_rate,
         batch_size=batch_size,
         n_epochs=n_epochs,
