@@ -11,12 +11,12 @@ from typing import Any, Dict, Optional, Type
 import numpy as np
 import torch
 import torch.nn as nn
-from stable_baselines3.common.torch_layers import BaseFeaturesExtractor
 from stable_baselines3.common.policies import ActorCriticPolicy
+from stable_baselines3.common.torch_layers import BaseFeaturesExtractor
 from stable_baselines3.common.type_aliases import Schedule
 
-from model.tsp_agent.graph_pointer_network_model import GraphPointerNetwork
 from model.graph_converter import observation_to_graph
+from model.tsp_agent.graph_pointer_network_model import GraphPointerNetwork
 
 
 class GraphAwareFeaturesExtractor(BaseFeaturesExtractor):
@@ -30,6 +30,39 @@ class GraphAwareFeaturesExtractor(BaseFeaturesExtractor):
     
     This enables explicit spatial reasoning about customer and truck locations.
     """
+    
+    
+    
+    # In one sentence: A smart decision-making system that helps trucks decide which customers to deliver to, by visualizing the problem as a graph of connected locations.
+
+    # The Real-World Problem
+    # Imagine you have:
+
+    # 4 delivery trucks at different locations
+    # 15 customers scattered across a city
+    # Each truck has a weight limit (capacity)
+    # Each customer needs a package delivery
+    # The question: Which customers should each truck deliver to minimize total distance traveled?
+
+    # How the Graph Pointer Network Works
+    # Step 1: See the Problem as a Map (Graph)
+
+    # Instead of treating the problem as just numbers, the system converts it into a spatial graph
+    # Nodes = trucks + customers (19 points on a map)
+    # Connections = nearby locations linked together (if they're close in distance)
+    # Step 2: Use Attention to Find Important Customers
+
+    # The system uses "attention" (like human eyes focusing on relevant things)
+    # It looks at each truck's position and asks: "Which unvisited customers are most important for me to visit next?"
+    # It scores all customers based on their location and feasibility
+    # Step 3: Combine with Traditional Learning
+
+    # The graph insights are combined with traditional neural network features
+    # Both approaches vote together to make the best decision
+    # Step 4: Output the Decision
+
+    # Each truck gets a decision: "Go to customer 3" or "Return to depot"
+
 
     def __init__(
         self,

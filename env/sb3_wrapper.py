@@ -34,7 +34,6 @@ class FleetRoutingSB3Wrapper(gym.Wrapper):
         self.num_customers = num_customers
         
         self._last_feasibility_mask = None
-        
         self.observation_space = self._build_observation_space()
         self.action_space = spaces.MultiDiscrete([num_customers + 1] * num_trucks) #  C choices x T trucks, choices per truck
            
@@ -59,8 +58,8 @@ class FleetRoutingSB3Wrapper(gym.Wrapper):
         obs_size = 5 * T + 4 * N
         
         return spaces.Box(
-            low=-1000.0,
-            high=1000.0,
+            low=-10.0,
+            high=27000.0,
             shape=(obs_size,),
             dtype=np.float32
         )

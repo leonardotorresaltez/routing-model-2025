@@ -75,15 +75,16 @@ class SimpleFleetRoutingEnv(gym.Env):
         
         # Gymnasium spaces
         # Action: MultiDiscrete, one action per truck [0 to N] where N=depot action
+        # All trucks decide simultaneously; the model learns emergent fleet coordinatio # ASKJORGE # FIXME probably we want to simplify this
         self.action_space = spaces.MultiDiscrete([self.num_customers + 1] * self.num_trucks)
         
         # Observation: dictionary with various state components
         self.observation_space = spaces.Dict({
-            "truck_positions": spaces.Box(low=-1000, high=1000, shape=(self.num_trucks, 2), dtype=np.float32),
-            "truck_loads": spaces.Box(low=0, high=10000, shape=(self.num_trucks,), dtype=np.float32),
-            "truck_capacities": spaces.Box(low=0, high=10000, shape=(self.num_trucks,), dtype=np.float32),
-            "customer_locations": spaces.Box(low=-1000, high=1000, shape=(self.num_customers, 2), dtype=np.float32),
-            "customer_weights": spaces.Box(low=0, high=1000, shape=(self.num_customers,), dtype=np.float32),
+            "truck_positions": spaces.Box(low=-10.0, high=44.0, shape=(self.num_trucks, 2), dtype=np.float32),
+            "truck_loads": spaces.Box(low=0, high=27000, shape=(self.num_trucks,), dtype=np.float32),
+            "truck_capacities": spaces.Box(low=20000, high=27000, shape=(self.num_trucks,), dtype=np.float32),
+            "customer_locations": spaces.Box(low=-10.0, high=44.0, shape=(self.num_customers, 2), dtype=np.float32),
+            "customer_weights": spaces.Box(low=1, high=500, shape=(self.num_customers,), dtype=np.float32),
             "unvisited_mask": spaces.Box(low=0, high=1, shape=(self.num_customers,), dtype=np.int8),
             "feasibility_mask": spaces.Box(low=0, high=1, shape=(self.num_trucks, self.num_customers + 1), dtype=np.int8),
         })
@@ -188,7 +189,7 @@ class SimpleFleetRoutingEnv(gym.Env):
         r_efficiency = compute_utilization_reward(self.truck_states)
         
         # Total reward: 0.75 on routing, 0.25 on efficiency
-        reward = 0.75 * r_routing + 0.25 * r_efficiency
+        reward = 0.75 * r_routing + 0.25 * r_efficiency # FIXME, # ASKJORGE, MULTIOBJECTIVE!! 2 competing goals, distance and efficiency
         self.episode_rewards.append(reward)
         
         # Check termination: all customers visited

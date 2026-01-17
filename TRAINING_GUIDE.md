@@ -31,30 +31,40 @@ routing-model-2025/
 │   └── sb3_wrapper.py              # Stable-Baselines3 wrapper for the environment
 ├── baselines.py                     # Greedy baseline policies
 ├── train_ppo.py                     # PPO training script
-├── test_environment.py              # Environment validation tests
+├── tests/                           # Test suite
+│   ├── test_graph_pointer_integration.py  # GPN architecture tests
+│   ├── test_environment.py                # Environment tests
+│   ├── final_integration_test.py          # System integration tests
+│   ├── run_all_tests.py                   # Test orchestrator
+│   └── README.md                          # Test documentation
+├── model/                           # Neural network policies
+│   ├── graph_converter.py          # Observation → graph conversion
+│   └── graph_pointer_policy.py     # Graph Pointer Network policy
 ├── README.md                        # Full problem specification
-└── README_SIMPLIFIED.md             # Simplified problem specification
+├── README_SIMPLIFIED.md             # Simplified specification
+└── GRAPH_POINTER_IMPLEMENTATION.md  # GPN architecture details
 ```
 
 ## Quick Start
 
 ### 1. Test the Environment
 
-Run the environment tests to verify everything is working:
+Run the complete test suite to verify everything is working:
 
 ```bash
-python test_environment.py
+python -m tests.run_all_tests
 ```
 
-This will:
-- Test basic environment functionality
-- Validate feasibility masking
-- Run greedy baseline policies
-- Display performance metrics
+This will run:
+- **Graph Pointer Network integration tests** (9 tests): Graph conversion, feature extraction, policy
+- **Environment tests** (4 tests): Basic functionality, feasibility masking, episode completion, baselines
+- **Final integration tests** (6 tests): End-to-end system validation
+
+See `tests/README.md` for detailed test documentation and individual test execution.
 
 ### 2. Train a PPO Policy
 
-Train a policy with default parameters (15 customers, 4 trucks, 10,000 timesteps):
+Train a policy with default parameters (20 customers, 5 trucks, 100,000 timesteps):
 
 ```bash
 python train_ppo.py
@@ -134,9 +144,27 @@ r_routing = -distance_traveled
 - **Success**: All customers delivered
 - **Failure**: Max steps exceeded (truncation)
 
-## Baseline Policies
+## Policy Architecture
 
-The `baselines.py` module implements three simple policies for comparison:
+### Graph Pointer Network Policy
+
+The system uses a **Graph Pointer Network** (GPN) policy that:
+
+1. **Converts observations to graphs**: Flat 80-dimensional observations are converted to explicit graph structures with:
+   - Node features: Truck and customer positions [T+N, 2]
+   - Adjacency matrix: k-nearest neighbors spatial connectivity [T+N, T+N]
+
+2. **Processes through attention**: The GraphPointerNetwork uses multi-head attention to score nodes
+
+3. **Combines with MLP features**: Graph-aware embeddings are fused with traditional MLP features
+
+4. **Outputs actions**: Produces action logits for each truck's customer selection
+
+See `GRAPH_POINTER_IMPLEMENTATION.md` for architecture details.
+
+### Baseline Policies
+
+For comparison, `baselines.py` implements three simple policies:
 
 1. **Greedy Nearest Customer**: Each truck picks the nearest unvisited customer it can serve
 2. **Nearest Depot First**: Trucks return to depot after reaching 70% utilization
@@ -245,13 +273,15 @@ Note: Longer training, larger batch sizes, and higher learning rates may improve
 
 **Model not improving over baseline:**
 - Train for more timesteps (100k+)
-- Verify feasibility masking is working (check `test_environment.py`)
+- Verify feasibility masking is working: `python -m tests.test_environment`
+- Ensure Graph Pointer Network is active: check output contains "graph" mentions
 - Try different hyperparameter combinations
 
 ## Next Steps
 
-1. **Longer training**: Run with `--timesteps 500000` or more
-2. **Custom reward tuning**: Adjust weights in `routing_env_simple.py`
-3. **Architecture improvements**: Replace `MlpPolicy` with custom networks
-4. **Graph Neural Networks**: Implement GNN-based policy for relational reasoning
-5. **Multi-problem training**: Train on curriculum of varying difficulty levels
+1. **Graph Pointer Tuning**: Adjust `k_neighbors` and `hidden_dim` in Graph Pointer Network for better performance
+2. **Longer training**: Run with `--timesteps 500000` or more for better convergence
+3. **Custom reward tuning**: Adjust weights in `routing_env_simple.py` to balance distance vs. utilization
+4. **Curriculum learning**: Generate progressively harder problem instances to train on
+5. **Multi-problem training**: Train on diverse problem sizes and depot configurations
+6. **Policy transfer**: Fine-tune pre-trained models on new problem instances
