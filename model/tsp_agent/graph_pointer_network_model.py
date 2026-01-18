@@ -2,7 +2,6 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-
 __all__ = ['GraphEncoder', 'GraphPointer', 'GraphPointerNetwork']
 
 # ---------------------------
@@ -18,9 +17,9 @@ class GraphEncoder(nn.Module):
         x: [N, in_dim]      node features
         adj: [N, N]        adjacency matrix (0/1)
         """
-        h = self.linear(x)             # [N, hidden_dim]
-        h = torch.matmul(adj, h)       # message passing
-        return F.relu(h)
+        h = self.linear(x)             # Line 21: Feature transformation (X·W) -- [N, hidden_dim]
+        h = torch.matmul(adj, h)       # Line 22: Feature propagation (A·h) -- message passing
+        return F.relu(h)               # Line 23: Activation σ(·)
     
 # ---------------------------
 # Pointer Network over Graph Nodes

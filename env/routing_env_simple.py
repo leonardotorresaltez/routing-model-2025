@@ -31,9 +31,14 @@ class SimpleFleetRoutingEnv(gym.Env):
     What it does:
     Simulates the world (trucks delivering customers)
     Provides observations (truck positions, customer locations)
-    Computes rewards (distance cost, utilization bonus)
+    Computes rewards (distance cost, utilization bonus) # FIXME #ASKJORGE
     Enforces constraints (feasibility masks)
     """
+    
+    # action_space - The Space object corresponding to valid actions, all valid actions should be contained within the space.
+    # observation_space - The Space object corresponding to valid observations, all valid observations should be contained within the space.
+    # reward_range - A tuple corresponding to the minimum and maximum possible rewards for an agent over an episode. The default reward range is set to (-\infty,+\infty).
+    # spec - An environment spec that contains the information used to initialize the environment from gymnasium.make
     
     metadata = {"render_modes": []}
     
@@ -78,15 +83,15 @@ class SimpleFleetRoutingEnv(gym.Env):
         # All trucks decide simultaneously; the model learns emergent fleet coordinatio # ASKJORGE # FIXME probably we want to simplify this
         self.action_space = spaces.MultiDiscrete([self.num_customers + 1] * self.num_trucks)
         
-        # Observation: dictionary with various state components
+        # Observation: dictionary with various state components. It shapes the dimentions, not the values.
         self.observation_space = spaces.Dict({
             "truck_positions": spaces.Box(low=-10.0, high=44.0, shape=(self.num_trucks, 2), dtype=np.float32),
             "truck_loads": spaces.Box(low=0, high=27000, shape=(self.num_trucks,), dtype=np.float32),
             "truck_capacities": spaces.Box(low=20000, high=27000, shape=(self.num_trucks,), dtype=np.float32),
             "customer_locations": spaces.Box(low=-10.0, high=44.0, shape=(self.num_customers, 2), dtype=np.float32),
             "customer_weights": spaces.Box(low=1, high=500, shape=(self.num_customers,), dtype=np.float32),
-            "unvisited_mask": spaces.Box(low=0, high=1, shape=(self.num_customers,), dtype=np.int8),
-            "feasibility_mask": spaces.Box(low=0, high=1, shape=(self.num_trucks, self.num_customers + 1), dtype=np.int8),
+            "unvisited_mask": spaces.Box(low=0, high=1, shape=(self.num_customers,), dtype=np.int8), # Binary indicator: 1 = customer not yet visited, 0 = visited. Helps the agent track remaining deliveries.
+            "feasibility_mask": spaces.Box(low=0, high=1, shape=(self.num_trucks, self.num_customers + 1), dtype=np.int8), # 2D binary matrix showing which assignments are valid: rows = trucks, columns = customers + depot (destination 0). Prevents infeasible truck-customer combinations (e.g., too heavy for truck capacity)
         })
     
     def reset(self, seed: int = None, options: Dict = None) -> Tuple[Dict, Dict]:

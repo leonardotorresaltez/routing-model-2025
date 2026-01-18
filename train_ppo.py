@@ -9,26 +9,106 @@ from typing import Any, Dict
 
 import numpy as np
 from stable_baselines3 import PPO
-from stable_baselines3.common.callbacks import CheckpointCallback, EvalCallback
+from stable_baselines3.common.callbacks import (BaseCallback,
+                                                CheckpointCallback,
+                                                EvalCallback)
 from stable_baselines3.common.vec_env import DummyVecEnv
 
 from baselines import greedy_nearest_customer_policy
 from env.data_generation import generate_problem_instance
 from env.routing_env_simple import SimpleFleetRoutingEnv
 from env.sb3_wrapper import FleetRoutingSB3Wrapper
-from model.graph_pointer_policy import GraphPointerPolicy
+from model.graph_converter import visualize_routing_solution, visualize_routing_step
+from model.graph_pointer_policy import SimpleGraphPointerPolicy
+
+
+class GraphVisualizationCallback(BaseCallback):
+    """
+    Custom callback to visualize routing graphs during training.
+    
+    Periodically saves graph visualizations showing the evolution of truck
+    and customer positions throughout the training process.
+    """
+    
+    def __init__(
+        self,
+        num_trucks: int,
+        num_customers: int,
+        viz_freq: int = 5000,
+        save_dir: str = "debug_graphs"
+    ):
+        """
+        Args:
+            num_trucks: Number of trucks
+            num_customers: Number of customers
+            viz_freq: Visualization frequency (every N timesteps)
+            save_dir: Directory to save visualizations
+        """
+        super().__init__()
+        self.num_trucks = num_trucks
+        self.num_customers = num_customers
+        self.viz_freq = viz_freq
+        self.save_dir = save_dir
+        self.step_count = 0
+
+    def _on_step(self) -> bool:
+        if self.num_timesteps % self.viz_freq == 0:
+            try:
+                wrapped_env = self.training_env.envs[0]
+                base_env = wrapped_env.env
+                obs_dict = base_env._get_observation()
+                
+                flat_obs = wrapped_env._flatten_observation(obs_dict)
+                
+                depots = [depot.location() for depot in base_env.depots]
+                
+                truck_routes = {}
+                for truck_id, truck_state in enumerate(base_env.truck_states):
+                    truck_routes[truck_id] = truck_state.visited_customers
+                
+                save_path = os.path.join(
+                    self.save_dir,
+                    f"graph_step_{self.num_timesteps:06d}.png"
+                )
+                os.makedirs(self.save_dir, exist_ok=True)
+                
+                visualize_routing_solution(
+                    flat_obs,
+                    self.num_trucks,
+                    self.num_customers,
+                    depots=depots,
+                    truck_routes=truck_routes,
+                    step=self.num_timesteps,
+                    title_suffix=f"Training timestep {self.num_timesteps}",
+                    save_path=save_path
+                )
+                print(f"Graph visualization saved at timestep {self.num_timesteps}")
+            except Exception as e:
+                print(f"Warning: Could not visualize graph at timestep {self.num_timesteps}: {e}")
+        
+        return True
 
 
 def make_env(customers, trucks, depots, max_steps=500):
     """Create a wrapped environment factory."""
     def _init():
         env = SimpleFleetRoutingEnv(customers, trucks, depots, max_steps=max_steps)
-        env = FleetRoutingSB3Wrapper(env)
+        # print(env.observation_space.spaces['feasability_mask'])
+        # print(env.observation_space['feasibility_mask'])
+        env = FleetRoutingSB3Wrapper(env) # - Wraps the environment to make it compatible with Stable Baselines3 (a RL library). The wrapper adapts the custom environment interface to follow the Gym/Gymnasium standard that Stable Baselines3 expects.
         return env
     return _init
 
 
-def evaluate_policy(policy, env, num_episodes=10) -> Dict[str, float]:
+def evaluate_policy(
+    policy,
+    env,
+    num_episodes=10,
+    visualize: bool = False,
+    num_trucks: int = 4,
+    num_customers: int = 15,
+    viz_episodes: int = 2
+) -> Dict[str, float]:
     """
     Evaluate a trained policy on the environment.
     
@@ -36,6 +116,10 @@ def evaluate_policy(policy, env, num_episodes=10) -> Dict[str, float]:
         policy: trained PPO model
         env: environment for evaluation
         num_episodes: number of episodes to evaluate
+        visualize: whether to visualize graphs during evaluation
+        num_trucks: number of trucks (for visualization)
+        num_customers: number of customers (for visualization)
+        viz_episodes: number of episodes to visualize (if visualize=True)
     
     Returns:
         Dictionary with evaluation metrics
@@ -44,13 +128,24 @@ def evaluate_policy(policy, env, num_episodes=10) -> Dict[str, float]:
     total_distances = []
     episode_lengths = []
     
-    for _ in range(num_episodes):
+    for episode_id in range(num_episodes):
         obs, info = env.reset()
         done = False
         episode_reward = 0.0
         steps = 0
+        should_viz = visualize and episode_id < viz_episodes
         
         while not done:
+            if should_viz:
+                visualize_routing_step(
+                    obs,
+                    num_trucks,
+                    num_customers,
+                    step=steps,
+                    title_suffix=f"Evaluation Episode {episode_id}",
+                    save_dir="eval_graphs"
+                )
+            
             action, _states = policy.predict(obs, deterministic=True)
             obs, reward, terminated, truncated, info = env.step(action)
             episode_reward += reward
@@ -71,6 +166,25 @@ def evaluate_policy(policy, env, num_episodes=10) -> Dict[str, float]:
     }
 
 
+
+# 1. Collect Experience (64 timesteps = batch_size):
+#    └─ Agent takes actions in environment
+#    └─ Gets rewards: distance_cost (0.75) + utilization_bonus (0.25)
+#    └─ Records: observation, action, reward, value estimate
+
+# 2. Compute Advantages (10 times = n_epochs):
+#    └─ Compare: actual_return vs predicted_value
+#    └─ Advantage = "was this action better/worse than expected?"
+   
+# 3. Update Network (3 losses combined):
+#    └─ Policy Loss: increase prob of actions with positive advantage
+#    └─ Value Loss: make value estimates more accurate (vf_coef=0.5)
+#    └─ Entropy Loss: maintain exploration (ent_coef=0.0, disabled)
+
+# 4. Gradient Descent:
+#    └─ Adjust weights using backpropagation
+#    └─ Clip updates (clip_range=0.2) to prevent drastic changes
+#    └─ Apply max gradient norm (max_grad_norm=0.5) for stability
 def train(
     num_timesteps: int = 100000,
     num_customers: int = 20,
@@ -120,7 +234,7 @@ def train(
     print(f"  Total truck capacity: {sum(t.max_capacity for t in trucks):.0f} kg")
     print(f"  Capacity ratio: {sum(c.weight for c in customers) / sum(t.max_capacity for t in trucks):.2%}\n")
     
-    env = DummyVecEnv([make_env(customers, trucks, depots)])
+    env = DummyVecEnv([make_env(customers, trucks, depots)]) #  create a vectorized environment for parallel training with Stable Baselines3's PPO algorithm.
     
     # AGENT  
     
@@ -164,8 +278,36 @@ def train(
         hidden_dim=64
     )
     
+    # About vf_coef:
+    # -----------
+    # Policy Loss: Updates the actor (decides which actions to take)
+    # Value Loss: Updates the critic (estimates expected cumulative reward)
+    #     Used to compute advantage estimates for policy updates
+    #     Reduces training variance
+    #     Helps stabilize learning
+    
+        
+    # Collect Experience:
+    # --------------------------
+    # Each timestep, the agent calls the policy with an observation (truck positions, customer locations, truck capacities, etc.)
+    # The policy's feature extractor (your SimpleGraphFeaturesExtractor in model/graph_pointer_policy.py:157) processes this through the Graph Pointer Network
+    # Two outputs emerge from the extracted features:
+    # Policy head: produces action probabilities (which customer to assign to which truck)
+    # Value head: predicts expected future reward
+
+    # Execute Action & Get Reward:
+    # --------------------------
+    # The agent picks an action based on the policy probabilities
+    # Environment (env/routing_env_simple.py:129) returns a reward based on:
+    # Distance cost (0.75 weight)
+    # Utilization efficiency (0.25 weight)
+
+    # Update the Network (This is where the losses matter):
+    # --------------------------
+    # Policy Loss: Measures how well the policy's action choices led to good rewards. PPO adjusts the policy to increase probability of actions that had positive "advantage" (actual return vs predicted value)
+    # Value Loss: Measures prediction error—how far the predicted value was from the actual return. PPO updates the value function to predict better next time
     model = PPO(
-        policy=GraphPointerPolicy,
+        policy=SimpleGraphPointerPolicy,
         env=env,
         policy_kwargs=policy_kwargs,
         learning_rate=learning_rate,
@@ -175,7 +317,8 @@ def train(
         gae_lambda=0.95,
         clip_range=0.2,
         ent_coef=0.0,
-        vf_coef=0.5,
+        vf_coef=0.5, # vf_coef=0.5, the value function loss contributes equally to policy loss in the optimization. 
+
         max_grad_norm=0.5,
         verbose=1,
         device="cpu"
@@ -187,10 +330,19 @@ def train(
         name_prefix="ppo_routing"
     )
     
+    viz_callback = GraphVisualizationCallback(
+        num_trucks=num_trucks,
+        num_customers=num_customers,
+        viz_freq=10000,
+        save_dir=os.path.join(output_dir, "training_graphs")
+    )
+    
     print("Training...")
+    # Stable Baselines3's PPO.learn() expects a vectorized environment. Handled by DummyVecEnv().
+    # It simplifies the training loop—you don't manually call env.step() in a loop; the algorithm handles it internally.
     model.learn(
         total_timesteps=num_timesteps,
-        callback=checkpoint_callback,
+        callback=[checkpoint_callback, viz_callback],
         progress_bar=False
     )
     
@@ -204,7 +356,15 @@ def train(
     eval_env = SimpleFleetRoutingEnv(customers, trucks, depots, max_steps=500)
     eval_env = FleetRoutingSB3Wrapper(eval_env)
     
-    metrics = evaluate_policy(model, eval_env, num_episodes=20)
+    metrics = evaluate_policy(
+        model,
+        eval_env,
+        num_episodes=20,
+        visualize=True,
+        num_trucks=num_trucks,
+        num_customers=num_customers,
+        viz_episodes=2
+    )
     
     print(f"Mean reward: {metrics['mean_reward']:.2f} +/- {metrics['std_reward']:.2f}")
     print(f"Mean distance: {metrics['mean_distance']:.2f} +/- {metrics['std_distance']:.2f}")
