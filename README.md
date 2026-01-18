@@ -1,8 +1,8 @@
 
 # Final Project: Deep Learning for Logistics Optimization
 **Title:** Deliver Goods Efficiently with Deep Learning  
-**Date:** 2026-01-09  
-**Version:** 3  
+**Date:** 2026-01-16 
+**Version:** 4  
 
 ---
 
@@ -88,8 +88,67 @@ Design a system that:
 ## 3. Project Tracks
 ### Track A — Reinforcement Learning (Train from Scratch)
 - **Environment**:
-  - State: current location, remaining jobs, truck load state, remaining capacity/time.
-  - Action: choose next stop (delivery); optional packing placement.
+  - STATE (Graph-Structured)
+    Represent the problem as a dynamic graph:
+
+    *Nodes*:
+    - Current truck location
+    - Remaining undelivered customers (with attributes: location, demand quantity/volume, V2-time window [ready_day, due_day], V2-truck access restrictions, V2-client type)
+    - V2-Current depot (if applicable for re-pickup)
+    
+    *Node Features (per customer)*:
+    - Geographic embedding (lat/lon → learned embedding or distance to current location)
+    - Demand vector (quantity, volume, weight, product type)
+    - V2?-Time window slack (hours until due date)
+    - V2-Truck compatibility mask (which truck types can serve this customer)
+    - V2-Client type (agrocenter vs. other → impacts SLA)
+
+    *Truck State*:
+    - Current capacity utilization (V2-weight_used / V2-max_weight, volume_used / max_volume)
+    - Elapsed time (hours_used / 12h limit)
+    - Current inventory packing state (list of goods loaded with item placements), V2-list of pallets loaded with item placements)
+    - Location (as graph node or coordinate)
+
+    *Edges*:
+    - Distance/time matrix between nodes (from historical/learned travel times)
+    - Feasibility edges (can this truck reach this customer given access restrictions?)
+  
+
+
+  - ACTION: choose next stop (delivery); optional packing placement.
+    *Routing Decision*:
+    - Select next customer to visit from unvisited set (argmax over GNN-scored nodes)
+    - Or: return to depot (to end current route)
+
+    *V2-Packing Decision*:
+    - Given selected customer's goods, decide which pallet type to use
+    - Decide item placement within pallet (heuristic guillotine or learned policy)
+    - Decide which truck route the goods go into (if multi-route)
+
+  - REWARD:
+    Multi-component scalar reward (normalized weighted sum):
+
+    R(t) = α · r_routing + β · r_packing + γ · r_feasibility + δ · r_completion
+
+    r_routing = -travel_distance_increment - 0.1 · travel_time_increment
+                (negative because we minimize cost)
+
+    r_packing = +0.5 if new item fits in current truck
+                -10.0 if packing infeasible (hard constraint violation)
+                +packing_utilization_gain (reward better volume usage)
+
+    r_feasibility = 0 if no constraint violated
+                    -100.0 per time-window violation (due date missed)
+                    -50.0 per truck capacity violation (weight or volume)
+                    -30.0 per access restriction violation (truck type can't serve)
+
+    r_completion = +1000.0 if all deliveries done & returned to depot
+                  +500.0 per successful delivery before due date
+                  -200.0 per undelivered customer (episode end penalty)
+
+
+
+
 - **Policy Architecture**:
   - Transformer/Pointer Network for constructive routing.
   - GNN for relational constraints and edge scoring.
@@ -99,19 +158,13 @@ Design a system that:
   - Negative travel time/distance.
   - Penalty for infeasible packing or constraint violations.
   - Bonus for completing all jobs with zero violations.
-- **Note**: Always wrap with a **validator + repair** step for hard constraints.
+- **Note**: 
+  - Modular: Routing RL can be trained independently; packing added later
+  - GNN-friendly: Graph structure naturally encodes customer relationships
+  - Feasibility-first: Hard constraints (masking + large penalties) ensure no violations escape to production
+  - Real-world aligned: Reflects actual dispatch decisions (pick next customer) + cost objectives
 
-### Track B — Fine-Tuning a Neural Heuristic
-- Start from a pre-trained sequence model (Transformer).
-- Fine-tune on synthetic and solver-generated routes (knowledge distillation).
-- Penalize packing/timing infeasibility during fine-tune.
-- Outcome: faster convergence; near-solver quality at inference-time speed.
 
-### Track C — Retrieval-Augmented Generation (RAG)
-- Use a knowledge base of routing rules and packing heuristics.
-- Retrieve relevant examples/constraints.
-- Generate explanations and **suggest repairs** using an LLM.
-- Outcome: transparency and operator-in-the-loop workflows.
 
 > **New Track D — GNN-Guided Heuristics**
 > Learn to score edges/customers/moves; plug scores into a classical local search (ruin & recreate, 2-opt/3-opt, relocate, swap). Gains speed without sacrificing feasibility.
