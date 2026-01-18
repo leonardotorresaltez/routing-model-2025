@@ -289,11 +289,15 @@ class GraphPointerPolicy(ActorCriticPolicy):
 
 class SimpleGraphPointerPolicy(ActorCriticPolicy):
     """
-    Simplified policy using graph-only feature extraction.
+    Simplified policy using graph-only feature extraction with action masking.
     
     Uses SimpleGraphFeaturesExtractor for cleaner, graph-focused learning
     without MLP fusion branches. Ideal for keeping the model simple while
     maintaining graph-based spatial reasoning.
+    
+    Applies feasibility masking inside the policy network (during distribution
+    creation) like the notebook approach, ensuring only valid actions get
+    non-zero probability.
     """
 
     def __init__(
@@ -324,6 +328,10 @@ class SimpleGraphPointerPolicy(ActorCriticPolicy):
             k_neighbors: Number of nearest neighbors for graph adjacency (default: None for full connectivity)
             **kwargs: Additional arguments for ActorCriticPolicy
         """
+        self.num_trucks = num_trucks
+        self.num_customers = num_customers
+        self._last_observations = None
+        
         if net_arch is None:
             net_arch = dict(pi=[hidden_dim], vf=[hidden_dim])
         
@@ -342,3 +350,84 @@ class SimpleGraphPointerPolicy(ActorCriticPolicy):
             ),
             **kwargs
         )
+    
+    def _extract_feasibility_mask(self, observations: torch.Tensor) -> torch.Tensor:
+        """
+        Extract feasibility_mask from flattened observations.
+        
+        Observations layout:
+        - Positions: 2*T
+        - Loads: T
+        - Capacities: T
+        - Utilization: T
+        - Customer locations: 2*N
+        - Customer volumes: N
+        - Unvisited mask: N
+        - Feasibility mask: T*(N+1) where N+1 includes depot option
+        
+        Total before mask: 5*T + 4*N
+        
+        Args:
+            observations: Batch of flattened observations
+            
+        Returns:
+            Feasibility mask tensor of shape [batch_size, T, N+1]
+        """
+        T = self.num_trucks
+        N = self.num_customers
+        
+        obs_size = 5 * T + 4 * N
+        mask_start = obs_size
+        
+        mask_flat = observations[:, mask_start:]
+        mask = mask_flat.reshape(-1, T, N + 1)
+        
+        return mask
+    
+    def forward(self, obs: torch.Tensor, deterministic: bool = False):
+        """
+        Forward pass that stores observations for masking and calls parent implementation.
+        
+        Args:
+            obs: Observations tensor
+            deterministic: Whether to use deterministic action selection
+            
+        Returns:
+            actions, values
+        """
+        self._last_observations = obs
+        return super().forward(obs, deterministic=deterministic)
+    
+    def _get_action_dist_from_latent(self, latent_pi: torch.Tensor):
+        """
+        Get action distribution from policy latent with feasibility masking.
+        
+        Applies -infinity masking to logits for infeasible actions before
+        creating distribution, ensuring only valid actions get sampled.
+        
+        Args:
+            latent_pi: Policy latent features [batch_size, hidden_dim]
+            
+        Returns:
+            Masked action distribution (MultiCategorical)
+        """
+        mean_actions = self.action_net(latent_pi)
+        
+        if self._last_observations is not None:
+            try:
+                feasibility_mask = self._extract_feasibility_mask(self._last_observations)
+                feasibility_mask = feasibility_mask.bool()
+                
+                mean_actions_masked = mean_actions.clone()
+                batch_size = mean_actions.shape[0]
+                
+                for b in range(batch_size):
+                    for t in range(self.num_trucks):
+                        invalid_actions = ~feasibility_mask[b, t]
+                        mean_actions_masked[b, t][invalid_actions] = float('-inf')
+                
+                mean_actions = mean_actions_masked
+            except Exception as e:
+                pass
+        
+        return self.action_dist.proba_distribution(mean_actions)

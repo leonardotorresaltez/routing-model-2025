@@ -93,7 +93,7 @@ def test_feasibility_masking(env):
             for customer_idx in range(env.num_customers):
                 feasible = feasibility_mask[truck_idx, customer_idx]
                 unvisited = unvisited_mask[customer_idx]
-                has_capacity = truck_state.remaining_capacity() >= env.customers[customer_idx].weight
+                has_capacity = truck_state.remaining_capacity() >= env.customers[customer_idx].volume
                 
                 if unvisited and feasible:
                     if not (has_capacity and customer_idx not in truck_state.visited_customers):
