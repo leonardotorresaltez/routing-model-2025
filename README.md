@@ -1,5 +1,5 @@
 # Deep Learning for Fleet Routing Optimization (Simplified Version)
-**Title:** Maximize Truck Weight Utilization with Deep Learning  
+**Title:** Maximize Truck volume Utilization with Deep Learning  
 **Date:** 2026-01-17
 **Version:** 1.0 (Simplified)
 
@@ -8,7 +8,7 @@
 ## Main Objectives
 1. Deliver goods to all clients (no deadline constraints).
 2. Minimize total travel distance for the fleet.
-3. Maximize weight utilization on each truck.
+3. Maximize volume utilization on each truck.
 
 ---
 
@@ -18,14 +18,14 @@ Design a system that optimizes routing for a fleet of trucks as a single unit, a
 - All customers are visited exactly once
 - Each truck carries its delivery assignments and returns to its **home depot** only
 - Total fleet distance is minimized
-- Truck weight utilization is maximized
+- Truck volume utilization is maximized
 
 **Key Simplifications**:
 - ✅ Single objective: minimize distance + maximize utilization
 - ✅ No time windows, no driver hour limits
 - ✅ Trucks return only to their home depot (no re-pickup from other depots)
 - ✅ Clients are homogeneous (no types, no SLA)
-- ✅ No packing/pallets (weight-only constraints)
+- ✅ No packing/pallets (volume-only constraints)
 
 ---
 
@@ -46,8 +46,8 @@ Design a system that optimizes routing for a fleet of trucks as a single unit, a
 - **Truck Nodes** (T total, one per truck):
   - Current location: (x, y) coordinate
   - Home depot: depot ID where truck must return at day end
-  - Current load: total weight of assigned customers (kg)
-  - Max capacity: maximum weight truck can carry (kg)
+  - Current load: total volume of assigned customers (kg)
+  - Max capacity: maximum volume truck can carry (kg)
   - Route: list of visited customer IDs
 
 - **Depot Nodes** (D static):
@@ -56,18 +56,18 @@ Design a system that optimizes routing for a fleet of trucks as a single unit, a
 
 - **Customer Nodes** (N undelivered customers):
   - Location: (x, y) coordinate
-  - Weight: customer delivery weight (kg)
+  - volume: customer delivery volume (kg)
 
 **Node Features (per truck)**:
 - Position: current (x, y)
 - Home depot: depot ID
-- Current load: sum of assigned customer weights (kg)
-- Max capacity: truck's weight capacity (kg)
+- Current load: sum of assigned customer volumes (kg)
+- Max capacity: truck's volume capacity (kg)
 - Load utilization: current_load / max_capacity (%)
 
 **Node Features (per customer)**:
 - Location: (x, y)
-- Weight: delivery weight (kg)
+- volume: delivery volume (kg)
 - Visitation status: unvisited or visited
 
 **Graph Edges**:
@@ -86,7 +86,7 @@ Design a system that optimizes routing for a fleet of trucks as a single unit, a
 **Action Constraints**:
 - Each customer assigned to at most one truck per step
 - Truck can visit customer only if:
-  - Truck has remaining capacity: `current_load + customer.weight ≤ truck.max_capacity`
+  - Truck has remaining capacity: `current_load + customer.volume ≤ truck.max_capacity`
   - Action masking prevents capacity violations (infeasible actions blocked)
 - If truck selects action = N (depot): returns to home depot, clears load, resets for next route
 
@@ -107,7 +107,7 @@ For each truck→customer assignment:
 (negative; encourages short routes)
 ```
 
-**r_efficiency** (weight utilization maximization):
+**r_efficiency** (volume utilization maximization):
 ```
 For each truck with assigned customers:
   utilization = current_load / truck.max_capacity
@@ -128,11 +128,11 @@ If customers not delivered at episode end:
 **Total Reward at Step t**:
 ```
 R(t) = 0.75 * r_routing + 0.25 * r_efficiency
-(weights: 75% on distance cost, 25% on utilization)
+(volumes: 75% on distance cost, 25% on utilization)
 ```
 
 **Action Masking (Feasibility)**:
-- Capacity: mask if `current_load + customer.weight > truck.max_capacity`
+- Capacity: mask if `current_load + customer.volume > truck.max_capacity`
 - Duplicate: mask if customer already assigned this step
 - Depot action: always available
 - Policy only sees feasible actions → 100% feasibility guarantee
@@ -149,11 +149,11 @@ R(t) = 0.75 * r_routing + 0.25 * r_efficiency
 ```python
 {
   "truck_positions": Box(shape=(T, 2), dtype=float32),      # (x, y) per truck
-  "truck_loads": Box(shape=(T,), dtype=float32),            # current weight per truck
+  "truck_loads": Box(shape=(T,), dtype=float32),            # current volume per truck
   "truck_capacities": Box(shape=(T,), dtype=float32),       # max capacity per truck
   "truck_home_depots": Box(shape=(T,), dtype=int32),        # depot ID per truck
   "customer_locations": Box(shape=(N, 2), dtype=float32),   # (x, y) per customer
-  "customer_weights": Box(shape=(N,), dtype=float32),       # weight per customer
+  "customer_volumes": Box(shape=(N,), dtype=float32),       # volume per customer
   "unvisited_mask": Box(shape=(N,), dtype=int8),            # 1 if unvisited, 0 otherwise
   "feasibility_mask": Box(shape=(T, N+1), dtype=int8)       # 1 if feasible, 0 otherwise
 }
@@ -168,13 +168,13 @@ MultiDiscrete([N+1] * T)  # Each truck: customer_id or depot (action=N)
 
 ## 5. Data & Features
 
-- **Trucks**: T trucks with assigned home depots, weight capacities
-- **Customers**: N customers with locations and weights
+- **Trucks**: T trucks with assigned home depots, volume capacities
+- **Customers**: N customers with locations and volumes
 - **Depots**: D depots with fixed locations
 - **Distance Matrix**: Euclidean distance between all locations
 - **Objectives**: 
   - Minimize total distance (primary: 75%)
-  - Maximize weight utilization (secondary: 25%)
+  - Maximize volume utilization (secondary: 25%)
 
 ---
 
@@ -183,7 +183,7 @@ MultiDiscrete([N+1] * T)  # Each truck: customer_id or depot (action=N)
 ### Step 1: Data Generation
 ```python
 # Synthetic instances
-customers = [(x, y, weight) for _ in range(N)]
+customers = [(x, y, volume) for _ in range(N)]
 depots = [(x, y) for _ in range(D)]
 trucks = [
   {
@@ -206,7 +206,7 @@ env = FleetRoutingEnv(
 ```
 
 ### Step 3: Policy Network
-- **Input**: truck states + customer locations/weights + feasibility masks
+- **Input**: truck states + customer locations/volumes + feasibility masks
 - **Architecture**: Transformer encoder + multi-head action selector (one head per truck)
 - **Output**: Action probabilities per truck (after masking)
 
@@ -244,7 +244,7 @@ for episode in range(num_episodes):
 
 **Week 3: Scaling & Optimization**
 - Scale to larger instances (N=100, T=20)
-- Tune reward weights (0.75/0.25 ratio)
+- Tune reward volumes (0.75/0.25 ratio)
 - Add curriculum learning (size progression)
 
 **Week 4: Evaluation & Polish**
@@ -271,13 +271,13 @@ for episode in range(num_episodes):
 
 | Aspect | Full Version | Simplified |
 |--------|------------|-----------|
-| **Packing** | 3D packing with pallets | Weight-only (no volume) |
+| **Packing** | 3D packing with pallets | volume-only (no volume) |
 | **Time Windows** | Yes | ✅ No |
 | **Driver Hours** | 12-hour limit | ✅ No limit |
 | **Client Types** | Agrocenter / Other | ✅ All homogeneous |
 | **Re-pickup** | Allowed from any depot | ✅ Home depot only |
 | **Objectives** | Distance + Time + Vehicles | ✅ Distance + Utilization |
-| **Reward Weights** | 0.7/0.2/0.1 | 0.75/0.25 (2 components) |
+| **Reward volumes** | 0.7/0.2/0.1 | 0.75/0.25 (2 components) |
 | **Complexity** | O(T × N × D × features) | ✅ O(T × N × D) |
 
 ---
@@ -351,7 +351,7 @@ For detailed test documentation, see `tests/README.md`
 
 | Issue | Root Cause | Solution |
 |-------|-----------|----------|
-| Low utilization bonus | Weights too imbalanced | Increase r_efficiency coefficient |
+| Low utilization bonus | volumes too imbalanced | Increase r_efficiency coefficient |
 | Slow convergence | Sparse rewards | Add intermediate rewards for partial deliveries |
 | Generalization failure | Overfitting to one size | Use curriculum learning (N: 10→20→50→100) |
 | Capacity violations | Masking not working | Verify feasibility_mask computation before softmax |
@@ -398,7 +398,7 @@ env.close()
 ---
 
 **Version History**:
-- v1.0 (2026-01-17): Initial simplified version - weight-only, no time constraints, home-depot-only
+- v1.0 (2026-01-17): Initial simplified version - volume-only, no time constraints, home-depot-only
 
 
 

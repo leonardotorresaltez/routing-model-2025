@@ -5,9 +5,11 @@ Creates random problem instances with customers, trucks, and depots
 for testing and training the routing environment.
 """
 
-import numpy as np
 from typing import List, Tuple
-from env.types_simple import Customer, Truck, Depot
+
+import numpy as np
+
+from env.types_simple import Customer, Depot, Truck
 
 
 def generate_problem_instance(
@@ -16,7 +18,7 @@ def generate_problem_instance(
     num_depots: int = 2,
     area_size: float = 15.0,
     truck_capacity_range: Tuple[float, float] = (10000.0, 25000.0),
-    customer_weight_range: Tuple[float, float] = (20.0, 300.0),
+    customer_volume_range: Tuple[float, float] = (20.0, 300.0),
     seed: int = None
 ) -> Tuple[List[Customer], List[Truck], List[Depot]]:
     """
@@ -27,8 +29,8 @@ def generate_problem_instance(
         num_trucks: number of trucks in fleet
         num_depots: number of depots
         area_size: coordinates range is [0, area_size] (degrees, ~15 = Spain area)
-        truck_capacity_range: (min, max) capacity for trucks in kg (10000-27000 kg)
-        customer_weight_range: (min, max) weight for customers in kg (20-300 kg)
+        truck_capacity_range: (min, max) capacity for trucks (10000-27000)
+        customer_volume_range: (min, max) volume for customers (20-300)
         seed: random seed for reproducibility
     
     Returns:
@@ -64,7 +66,7 @@ def generate_problem_instance(
             id=i,
             x=np.random.uniform(0, area_size),
             y=np.random.uniform(0, area_size),
-            weight=np.random.uniform(*customer_weight_range)
+            volume=np.random.uniform(*customer_volume_range)
         )
         customers.append(customer)
     
@@ -128,12 +130,12 @@ def calculate_optimal_bounds(
     Lower bound: sum of distances from each customer to nearest depot
     Upper bound: naive nearest-neighbor from all depots
     """
-    total_weight = sum(c.weight for c in customers)
+    total_volume = sum(c.volume for c in customers)
     total_capacity = sum(t.max_capacity for t in trucks)
     
-    if total_weight > total_capacity:
+    if total_volume > total_capacity:
         raise ValueError(
-            f"Total customer weight ({total_weight}) exceeds total truck capacity ({total_capacity})"
+            f"Total customer volume ({total_volume}) exceeds total truck capacity ({total_capacity})"
         )
     
     depot_positions = np.array([d.location() for d in depots])

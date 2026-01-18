@@ -184,7 +184,7 @@ customers, trucks, depots = generate_problem_instance(
     num_trucks=10,
     num_depots=3,
     truck_capacity_range=(1000, 2000),
-    customer_weight_range=(50, 200),
+    customer_volume_range=(50, 200),
     seed=42
 )
 

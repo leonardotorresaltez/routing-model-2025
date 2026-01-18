@@ -34,7 +34,7 @@ def reconstruct_observation_components(
             - truck_capacities: [T] array of max capacities
             - truck_utilization: [T] array of load/capacity ratios
             - customer_locations: [N, 2] array of (x, y) coordinates
-            - customer_weights: [N] array of delivery demands
+            - customer_volumes: [N] array of delivery demands
             - unvisited_mask: [N] array of visit status (1=unvisited, 0=visited)
     """
     T = num_trucks
@@ -57,7 +57,7 @@ def reconstruct_observation_components(
     customer_locations = observation[idx:idx+2*N].reshape(N, 2)
     idx += 2*N
     
-    customer_weights = observation[idx:idx+N]
+    customer_volumes = observation[idx:idx+N]
     idx += N
     
     unvisited_mask = observation[idx:idx+N]
@@ -68,7 +68,7 @@ def reconstruct_observation_components(
         'truck_capacities': truck_capacities,
         'truck_utilization': truck_utilization,
         'customer_locations': customer_locations,
-        'customer_weights': customer_weights,
+        'customer_volumes': customer_volumes,
         'unvisited_mask': unvisited_mask,
     }
 
@@ -384,7 +384,7 @@ def visualize_routing_solution(
     customer_locations = components['customer_locations']
     truck_loads = components['truck_loads']
     truck_capacities = components['truck_capacities']
-    customer_weights = components['customer_weights']
+    customer_volumes = components['customer_volumes']
     unvisited_mask = components['unvisited_mask']
     
     fig = plt.figure(figsize=(18, 10))
@@ -392,7 +392,7 @@ def visualize_routing_solution(
     ax_legend = plt.subplot(122)
     
     truck_node_sizes = 300 + 400 * (truck_loads / (truck_capacities + 1e-8))
-    customer_weights_normalized = customer_weights / (customer_weights.max() + 1e-8) * 250 + 100
+    customer_volumes_normalized = customer_volumes / (customer_volumes.max() + 1e-8) * 250 + 100
     
     delivered_mask = unvisited_mask == 0
     unvisited_indices = np.where(~delivered_mask)[0]
@@ -453,7 +453,7 @@ def visualize_routing_solution(
         ax_map.scatter(
             customer_locations[unvisited_indices, 0],
             customer_locations[unvisited_indices, 1],
-            s=customer_weights_normalized[unvisited_indices],
+            s=customer_volumes_normalized[unvisited_indices],
             c='#3498DB',
             marker='o',
             alpha=0.7,
@@ -467,7 +467,7 @@ def visualize_routing_solution(
         ax_map.scatter(
             customer_locations[delivered_indices, 0],
             customer_locations[delivered_indices, 1],
-            s=customer_weights_normalized[delivered_indices],
+            s=customer_volumes_normalized[delivered_indices],
             c='#2ECC71',
             marker='o',
             alpha=0.75,

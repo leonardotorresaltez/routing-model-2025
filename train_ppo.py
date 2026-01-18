@@ -18,7 +18,8 @@ from baselines import greedy_nearest_customer_policy
 from env.data_generation import generate_problem_instance
 from env.routing_env_simple import SimpleFleetRoutingEnv
 from env.sb3_wrapper import FleetRoutingSB3Wrapper
-from model.graph_converter import visualize_routing_solution, visualize_routing_step
+from model.graph_converter import (visualize_routing_solution,
+                                   visualize_routing_step)
 from model.graph_pointer_policy import SimpleGraphPointerPolicy
 
 
@@ -230,9 +231,9 @@ def train(
     )
     
     print(f"Generated problem instance:")
-    print(f"  Total customer weight: {sum(c.weight for c in customers):.0f} kg")
-    print(f"  Total truck capacity: {sum(t.max_capacity for t in trucks):.0f} kg")
-    print(f"  Capacity ratio: {sum(c.weight for c in customers) / sum(t.max_capacity for t in trucks):.2%}\n")
+    print(f"  Total customer volume: {sum(c.volume for c in customers):.0f} X")
+    print(f"  Total truck capacity: {sum(t.max_capacity for t in trucks):.0f} X")
+    print(f"  Capacity ratio: {sum(c.volume for c in customers) / sum(t.max_capacity for t in trucks):.2%}\n")
     
     env = DummyVecEnv([make_env(customers, trucks, depots)]) #  create a vectorized environment for parallel training with Stable Baselines3's PPO algorithm.
     

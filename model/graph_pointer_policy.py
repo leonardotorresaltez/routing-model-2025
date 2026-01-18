@@ -39,7 +39,7 @@ from model.tsp_agent.graph_pointer_network_model import GraphPointerNetwork
 
 #     # 4 delivery trucks at different locations
 #     # 15 customers scattered across a city
-#     # Each truck has a weight limit (capacity)
+#     # Each truck has a volume limit (capacity)
 #     # Each customer needs a package delivery
 #     # The question: Which customers should each truck deliver to minimize total distance traveled?
 

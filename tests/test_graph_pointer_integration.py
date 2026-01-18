@@ -8,22 +8,19 @@ Verifies:
 - Full PPO training with GraphPointerPolicy
 """
 
+import gymnasium as gym
 import numpy as np
 import torch
-import gymnasium as gym
 from gymnasium import spaces
 
-from model.graph_converter import (
-    reconstruct_observation_components,
-    build_node_features,
-    build_adjacency_matrix,
-    observation_to_graph,
-    create_networkx_graph,
-)
-from model.graph_pointer_policy import GraphAwareFeaturesExtractor, GraphPointerPolicy
-from env.sb3_wrapper import FleetRoutingSB3Wrapper
 from env.routing_env_simple import SimpleFleetRoutingEnv
-from env.types_simple import Customer, Truck, Depot
+from env.sb3_wrapper import FleetRoutingSB3Wrapper
+from env.types_simple import Customer, Depot, Truck
+from model.graph_converter import (build_adjacency_matrix, build_node_features,
+                                   create_networkx_graph, observation_to_graph,
+                                   reconstruct_observation_components)
+from model.graph_pointer_policy import (GraphAwareFeaturesExtractor,
+                                        GraphPointerPolicy)
 
 
 class TestGraphConverter:
@@ -51,7 +48,7 @@ class TestGraphConverter:
         assert components['truck_capacities'].shape == (num_trucks,)
         assert components['truck_utilization'].shape == (num_trucks,)
         assert components['customer_locations'].shape == (num_customers, 2)
-        assert components['customer_weights'].shape == (num_customers,)
+        assert components['customer_volumes'].shape == (num_customers,)
         assert components['unvisited_mask'].shape == (num_customers,)
         
         print("[PASS] reconstruct_observation_components")

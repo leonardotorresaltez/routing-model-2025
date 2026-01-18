@@ -5,7 +5,7 @@ This environment simulates a fleet routing problem where:
 - Multiple trucks deliver goods to customers from their home depots
 - Objective: minimize distance + maximize truck utilization
 - No time windows, no packing complexity
-- Weight capacity is the only constraint
+- Volume capacity is the only constraint
 
 Environment:
 - State: truck positions, loads, customer locations, feasibility mask
@@ -89,7 +89,7 @@ class SimpleFleetRoutingEnv(gym.Env):
             "truck_loads": spaces.Box(low=0, high=27000, shape=(self.num_trucks,), dtype=np.float32),
             "truck_capacities": spaces.Box(low=20000, high=27000, shape=(self.num_trucks,), dtype=np.float32),
             "customer_locations": spaces.Box(low=-10.0, high=44.0, shape=(self.num_customers, 2), dtype=np.float32),
-            "customer_weights": spaces.Box(low=1, high=500, shape=(self.num_customers,), dtype=np.float32),
+            "customer_volumes": spaces.Box(low=1, high=500, shape=(self.num_customers,), dtype=np.float32),
             "unvisited_mask": spaces.Box(low=0, high=1, shape=(self.num_customers,), dtype=np.int8), # Binary indicator: 1 = customer not yet visited, 0 = visited. Helps the agent track remaining deliveries.
             "feasibility_mask": spaces.Box(low=0, high=1, shape=(self.num_trucks, self.num_customers + 1), dtype=np.int8), # 2D binary matrix showing which assignments are valid: rows = trucks, columns = customers + depot (destination 0). Prevents infeasible truck-customer combinations (e.g., too heavy for truck capacity)
         })
@@ -183,7 +183,7 @@ class SimpleFleetRoutingEnv(gym.Env):
                         
                         # Update truck state
                         truck_state.current_location = customer.location()
-                        truck_state.current_load += customer.weight
+                        truck_state.current_load += customer.volume
                         truck_state.visited_customers.append(customer_idx)
         
         # Calculate rewards
@@ -238,8 +238,8 @@ class SimpleFleetRoutingEnv(gym.Env):
         # Customer locations
         customer_locations = np.array([c.location() for c in self.customers], dtype=np.float32)
         
-        # Customer weights
-        customer_weights = np.array([c.weight for c in self.customers], dtype=np.float32)
+        # Customer volumes
+        customer_volumes = np.array([c.volume for c in self.customers], dtype=np.float32)
         
         # Unvisited mask
         all_visited = set()
@@ -280,7 +280,7 @@ class SimpleFleetRoutingEnv(gym.Env):
             "truck_loads": truck_loads,
             "truck_capacities": truck_capacities,
             "customer_locations": customer_locations,
-            "customer_weights": customer_weights,
+            "customer_volumes": customer_volumes,
             "unvisited_mask": unvisited_mask,
             "feasibility_mask": feasibility_mask,
         }

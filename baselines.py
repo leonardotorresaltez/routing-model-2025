@@ -5,8 +5,10 @@ Implements simple heuristics (greedy, nearest-neighbor) for benchmarking
 against learned RL policies.
 """
 
+from typing import Any, Dict, List
+
 import numpy as np
-from typing import List, Dict, Any
+
 from env.routing_env_simple import SimpleFleetRoutingEnv
 from env.utils_simple import euclidean_distance
 
@@ -53,7 +55,7 @@ def greedy_nearest_customer_policy(env: SimpleFleetRoutingEnv) -> Dict[str, Any]
                     continue
                 
                 customer = env.customers[customer_idx]
-                if truck_state.remaining_capacity() >= customer.weight:
+                if truck_state.remaining_capacity() >= customer.volume:
                     dist = euclidean_distance(truck_pos, customer.location())
                     if dist < best_distance:
                         best_distance = dist
@@ -125,7 +127,7 @@ def nearest_depot_first_policy(env: SimpleFleetRoutingEnv) -> Dict[str, Any]:
                     continue
                 
                 customer = env.customers[customer_idx]
-                if truck_state.remaining_capacity() >= customer.weight:
+                if truck_state.remaining_capacity() >= customer.volume:
                     dist = euclidean_distance(truck_pos, customer.location())
                     if dist < best_distance:
                         best_distance = dist
@@ -189,7 +191,7 @@ def furthest_customer_policy(env: SimpleFleetRoutingEnv) -> Dict[str, Any]:
                     continue
                 
                 customer = env.customers[customer_idx]
-                if truck_state.remaining_capacity() >= customer.weight:
+                if truck_state.remaining_capacity() >= customer.volume:
                     dist = euclidean_distance(truck_pos, customer.location())
                     if dist > best_distance:
                         best_distance = dist

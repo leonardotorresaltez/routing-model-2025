@@ -47,7 +47,7 @@ class FleetRoutingSB3Wrapper(gym.Wrapper):
         - Truck capacities: (num_trucks,)
         - Truck utilization: (num_trucks,) [computed]
         - Customer locations: (num_customers, 2)
-        - Customer weights: (num_customers,)
+        - Customer volumes: (num_customers,)
         - Unvisited mask: (num_customers,)
         
         Total size: 2*T + T + T + T + 2*N + N + N = 5*T + 4*N
@@ -75,7 +75,7 @@ class FleetRoutingSB3Wrapper(gym.Wrapper):
         truck_utilization = truck_loads / (truck_capacities + 1e-8)
         
         customer_locations = obs_dict["customer_locations"].flatten()
-        customer_weights = obs_dict["customer_weights"]
+        customer_volumes = obs_dict["customer_volumes"]
         unvisited_mask = obs_dict["unvisited_mask"].astype(np.float32)
         
         components.extend([
@@ -84,7 +84,7 @@ class FleetRoutingSB3Wrapper(gym.Wrapper):
             truck_capacities,
             truck_utilization,
             customer_locations,
-            customer_weights,
+            customer_volumes,
             unvisited_mask
         ])
         

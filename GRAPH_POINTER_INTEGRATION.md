@@ -96,7 +96,7 @@ Where T = number of trucks, N = number of customers
 - Truck capacities: T = 4-dim (max capacity per truck)
 - Truck utilization: T = 4-dim (computed as load/capacity)
 - Customer positions: 2×N = 30-dim (x,y coordinates per customer)
-- Customer weights: N = 15-dim (delivery demand per customer)
+- Customer volumes: N = 15-dim (delivery demand per customer)
 - Unvisited mask: N = 15-dim (visited status flag per customer)
 
 **Feature extraction pipeline:**

@@ -7,10 +7,12 @@ This module provides helper functions for:
 - Graph construction with NetworkX
 """
 
-import numpy as np
+from typing import Dict, List, Tuple
+
 import networkx as nx
-from typing import List, Tuple, Dict
-from env.types_simple import Customer, Truck, Depot, TruckState
+import numpy as np
+
+from env.types_simple import Customer, Depot, Truck, TruckState
 
 
 def euclidean_distance(p1: Tuple[float, float], p2: Tuple[float, float]) -> float:
@@ -41,7 +43,7 @@ def can_truck_serve_customer(
     Returns:
         True if truck has enough capacity, False otherwise
     """
-    return truck_state.remaining_capacity() >= customer.weight
+    return truck_state.remaining_capacity() >= customer.volume
 
 
 def build_distance_matrix(
@@ -122,7 +124,7 @@ def build_routing_graph(
     # Add customer nodes
     for customer in customers:
         G.add_node(f"customer_{customer.id}", type="customer", 
-                   x=customer.x, y=customer.y, weight=customer.weight)
+                   x=customer.x, y=customer.y, volume=customer.volume)
     
     # Add truck nodes
     for i, truck_state in enumerate(truck_states):
@@ -143,7 +145,7 @@ def build_routing_graph(
                     distance = euclidean_distance(truck_pos, customer.location())
                     
                     G.add_edge(f"truck_{truck_id}", f"customer_{customer_id}",
-                              distance=distance, weight=customer.weight)
+                              distance=distance, volume=customer.volume)
         
         # Edges to all depots (always feasible - can return home anytime)
         for depot in depots:

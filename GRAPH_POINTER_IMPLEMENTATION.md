@@ -10,7 +10,7 @@ Successfully implemented and integrated the Graph Pointer Network into the fleet
 **Purpose**: Convert flat observations to graph representations.
 
 **Key Functions**:
-- `reconstruct_observation_components()`: Reverses the flat observation vector back to individual components (truck positions, loads, customer locations, weights, visit masks)
+- `reconstruct_observation_components()`: Reverses the flat observation vector back to individual components (truck positions, loads, customer locations, volumes, visit masks)
 - `build_node_features()`: Creates unified node feature matrix combining truck and customer positions as [T+N, 2] tensor
 - `build_adjacency_matrix()`: Constructs k-nearest neighbors adjacency matrix for spatial connectivity between nodes
 - `observation_to_graph()`: Main orchestration function that converts flat observations to graph (node features + adjacency matrix)
@@ -87,7 +87,7 @@ When a batch of flat 80-dimensional observations arrives:
 
 ```python
 obs = [truck_pos(8), truck_loads(4), truck_cap(4), truck_util(4), 
-       customer_pos(30), customer_weights(15), unvisited_mask(15)]
+       customer_pos(30), customer_volumes(15), unvisited_mask(15)]
 ```
 
 ### 2. Graph Construction

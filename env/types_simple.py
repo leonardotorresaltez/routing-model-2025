@@ -2,7 +2,7 @@
 Data types for simplified fleet routing problem.
 
 This module defines the core data structures:
-- Customer: delivery location and weight
+- Customer: delivery location and volume
 - Truck: capacity and home depot
 - Depot: loading point location
 - RouteState: current truck state during episode
@@ -20,12 +20,12 @@ class Customer:
     Attributes:
         id: unique customer identifier (0 to N-1)
         x, y: 2D location coordinates
-        weight: delivery weight in kg
+        volume: delivery volume
     """
     id: int
     x: float
     y: float
-    weight: float
+    volume: float
     
     def location(self) -> Tuple[float, float]:
         """Return location as (x, y) tuple."""
@@ -40,7 +40,7 @@ class Truck:
     Attributes:
         id: unique truck identifier (0 to T-1)
         depot_id: home depot ID (0 to D-1)
-        max_capacity: maximum weight truck can carry (kg)
+        max_capacity: maximum volume truck can carry
     """
     id: int
     depot_id: int
@@ -73,7 +73,7 @@ class TruckState:
     Attributes:
         truck: Truck object
         current_location: (x, y) coordinates (changes as truck moves)
-        current_load: total weight of assigned customers (kg)
+        current_load: total volume of assigned customers (kg)
         visited_customers: list of customer IDs already delivered
         unvisited_customers: list of customer IDs not yet assigned
     """
@@ -87,5 +87,5 @@ class TruckState:
         return self.current_load / self.truck.max_capacity if self.truck.max_capacity > 0 else 0.0
     
     def remaining_capacity(self) -> float:
-        """Return remaining weight capacity."""
+        """Return remaining volume capacity."""
         return self.truck.max_capacity - self.current_load
