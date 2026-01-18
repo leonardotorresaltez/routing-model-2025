@@ -6,7 +6,7 @@ import torch.nn.functional as F
 # Attention-based Policy Model
 # ----------------------------
 class AttentionPolicy(nn.Module):
-    def __init__(self, node_dim, embed_dim):
+    def __init__(self, node_dim=2, embed_dim=128):
         super().__init__()
         self.node_embed = nn.Linear(node_dim, embed_dim)
 
@@ -43,23 +43,23 @@ class AttentionPolicy(nn.Module):
     
     
 
-N = 5
-node_dim = 2      # e.g. (x, y)
-embed_dim = 32
+#N = 5
+#node_dim = 2      # e.g. (x, y)
+#embed_dim = 32
 
 # random coordinates for nodes
-nodes = torch.rand(N, node_dim)  
-print("Input nodes:", nodes)
+#nodes = torch.rand(N, node_dim)  
+#print("Input nodes:", nodes)
 
-current_node = 0
+#current_node = 0
 
-visited_mask = torch.tensor([True, False, False, False, False])
+#visited_mask = torch.tensor([True, False, False, False, False])
 
-policy = AttentionPolicy(node_dim, embed_dim)
+#policy = AttentionPolicy(node_dim, embed_dim)
 
-probs = policy(nodes, current_node, visited_mask)
+#probs = policy(nodes, current_node, visited_mask)
 
-action = torch.multinomial(probs, 1).item()
+#action = torch.multinomial(probs, 1).item()
 
-print("Action probabilities:", probs)
-print("Selected next node:", action)
+#print("Action probabilities:", probs)
+#print("Selected next node:", action)
