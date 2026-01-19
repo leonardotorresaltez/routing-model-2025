@@ -1,17 +1,22 @@
 
 # Final Project: Deep Learning for Logistics Optimization
-**Title:** Deliver Goods Efficiently with Deep Learning  
-**Date:** 2026-01-16 
-**Version:** 4  
+**Title:** Maximize Truck volume Utilization with Deep Learning
+**Date:** 2026-01-19
+**Version:** 6  
 
 ---
 
 **Main objectives:**
-1. Deliver the goods to the clients before the deadline.
-2. Minimize total travel distance/time (costs) for the company.
+1. Deliver goods to all clients (no deadline constraints).
+2. Minimize total travel distance for the fleet.
+3. Maximize volume utilization on each truck.
+
+**V0
+1. For 1 truck, deliver all the goods with the less distance/time as possible
 
 ## 1. Problem Statement
 Design a system that:
+- Optimizes routing for all vehicles as a single fleet 
 - Starts the day at a depot.
 - Delivers goods to their destinations.
 - Packs goods properly in the pallets (3D packing constraints).
@@ -19,54 +24,70 @@ Design a system that:
 - May go to pick up goods at a new depot nearby the last delivery of the last route.
 - Ends the day (deliveries) at the starting point depot.
 
+**V0
+- Optimizes routing for 1 vehicle 
+- Starts the day at a depot.
+- Delivers goods to their destinations/customers.
+- Ends the day at the starting point depot.
+
+**Key Insight**: We make parallel routing decisions across all trucks in a single episode, minimizing **global fleet cost** (total distance + time) while maximizing truck utilization (weight + capacity loading). Vehicle count is not explicitly minimized; instead, it emerges naturally as the cost function incentivizes fuller trucks.
+
+
 ---
 
 # Logistics Requirements Document
 
 ### 1. Resources
-- **Factories**:
-  - 5 factories (5 loading points).
+- **Depots**:
+  - D number of depots (D loading points).
 - **Trucks**:
-  - Each factory has 5 trucks: 
-    - factory1: 1 of type A, 3 of type B, 1 of type C.
-    - factory2-5: 2 of type A, 2 of type B, 1 of type C.
+  - Each depot has its own fleet of trucks, with different types of trucks
   - Different truck volumes and different maximum truck weights.
   - Trucks work **less than 12 hours per day**.
   - Trucks can have more than 1 route, with each route having multiple deliveries per day.
   - Not all trucks can access all destinations (due to farm access restrictions, see *Client* paragraph).
   - **Types of trucks**:
-    - Type A: Max capacity and volume → *Pending Viviana*.
-    - Type B: Max capacity and volume → *Pending Viviana*.
-    - Type C: Max capacity and volume → *Pending Viviana*.
+    i.e. Type A: Max capacity and volume.
+
+**V0
+- **Depots**:
+  - D number of depots (D loading points). D =1.
+- **Trucks**:
+  - 1 truck that can deliver as many goods as it is asked for. 
 
 ---
 
-### 2. Pallets
+### 2. Pallets (V2)
 - Different pallet volumes and different maximum pallet weights.
-  - Pallet of type A: base weight and volume → *Pending Viviana*.
-  - Pallet of type B: base weight and volume → *Pending Viviana*.
+  - Pallet of type A: base weight and volume.
+  - Pallet of type B: base weight and volume.
 - Each pallet type, in case of having unique type of goods, has a predefined maximum number of goods.
-  - Example: Pallet A, goods = Potatoes, max number = 20 → *Pending Viviana*.
+  - Example: Pallet A, goods = Potatoes, max number = 20.
 - For pallets with mixed good types, **maximum 35 units/sacks per pallet** (for simplification).
 
+**V0
+- No pallets
 ---
 
 ### 3. Products
 - List of product weights and volumes:
-  - Example: Product 1 → weight = 3 kg, volume = 10×2×30 cm → *Pending Viviana*.
-- If list is not available, approximate total number of products, minimum and maximum volume, and minimum and maximum weight.
+  - Example: Product 1 → weight = 3 kg, volume = 10×2×30 cm.
 
+**V0
+- Not rellevant, since the truck can take as many goods as possible, from any weight and size.
 ---
 
-### 4. Delivery Constraints
+### 4. Delivery Constraints (V2)
 - **Goods of type A** (agrocenter client, milk product):
   - Must be served within **2 days** from the order day.
 - All other goods:
   - Must be served within **7 days** from the order day.
 
+**V0
+- Not rellevant.
 ---
-
-### 5. Delivery/Clients
+ 
+### 5. Delivery/Clients (V2)
 - **Access types**:
   - All trucks.
   - Trucks type A and B.
@@ -75,76 +96,228 @@ Design a system that:
   - Agrocenter.
   - Others.
 
+**V0
+- Not rellevant.
 ---
 
 ## 2. Why This Problem?
 - Real-world relevance: combines **Vehicle Routing Problem (VRP)** with **3D Bin Packing**.
-- Multi-objective optimization: routing + packing + capacity + SLA.
-- Great for showcasing deep learning techniques beyond classical solvers.
+- Multi-objective optimization: fleet-wide routing + truck utilization maximization.
+- **Key difference from classical routing**: We optimize the entire fleet cost simultaneously, allowing the model to learn load-balancing across trucks dynamically.
+
 
 
 ---
 
 ## 3. Project Tracks
-### Track A — Reinforcement Learning (Train from Scratch)
+### Reinforcement Learning (Train from Scratch)
+
 - **Environment**:
-  - STATE (Graph-Structured)
-    Represent the problem as a dynamic graph:
+  - **STATE** (Multi-Agent, Multi-Depot Graph)
+    Represent the problem as a dynamic graph with all T trucks and all undelivered customers:
 
-    *Nodes*:
-    - Current truck location
-    - Remaining undelivered customers (with attributes: location, demand quantity/volume, V2-time window [ready_day, due_day], V2-truck access restrictions, V2-client type)
-    - V2-Current depot (if applicable for re-pickup)
+    *Graph Nodes*:
+    - **Truck Nodes** (T total, one per truck):
+      - Current location: (x, y) coordinate or depot/depot node
+      - Home depot: which of D depots the truck belongs to (return point at day end)
     
-    *Node Features (per customer)*:
-    - Geographic embedding (lat/lon → learned embedding or distance to current location)
-    - Demand vector (quantity, volume, weight, product type)
-    - V2?-Time window slack (hours until due date)
-    - V2-Truck compatibility mask (which truck types can serve this customer)
-    - V2-Client type (agrocenter vs. other → impacts SLA)
-
-    *Truck State*:
-    - Current capacity utilization (V2-weight_used / V2-max_weight, volume_used / max_volume)
-    - Elapsed time (hours_used / 12h limit)
-    - Current inventory packing state (list of goods loaded with item placements), V2-list of pallets loaded with item placements)
-    - Location (as graph node or coordinate)
-
-    *Edges*:
-    - Distance/time matrix between nodes (from historical/learned travel times)
-    - Feasibility edges (can this truck reach this customer given access restrictions?)
+    - **Depot Nodes**  (D static):
+      - Fixed loading point locations (x, y)
+      - Truck bases (each truck assigned to one depot)
+      - Optional re-pickup points (trucks may visit nearby depots after deliveries)
+    
+    - **Customer Nodes** (N undelivered customers):
+      - Location: (x, y) coordinate
+      - Demand: quantity (units) + weight (kg) + volume (m³)
+      - Time window: [ready_time, due_time] (minutes from day start)
+      - Truck access restrictions: [can_A, can_B, can_C]
+      - Client type: agrocenter vs. other (affects SLA urgency)
   
+      **V0:
+      - Location: (x, y) coordinate
+      - Demand: quantity (units)
 
 
-  - ACTION: choose next stop (delivery); optional packing placement.
-    *Routing Decision*:
-    - Select next customer to visit from unvisited set (argmax over GNN-scored nodes)
-    - Or: return to depot (to end current route)
 
-    *V2-Packing Decision*:
+    *Node Features (per truck)*:
+    - Position: current (x, y) or depot ID
+    - Truck type: A, B, or C (determines capacity and access permissions)
+    - Home depot: depot ID (0–D) where truck returns at end of day
+    - Capacity state:
+      - Current load: sum of all assigned customer demands (units)
+      - Current weight: sum of assigned customer weights (kg)
+      - Current volume: sum of assigned customer volumes (m³)
+    - Time state:
+      - Elapsed time: total time spent (travel + service + wait, in minutes)
+      - Max hours: 12 hours (720 minutes) hard limit
+    - Route state: list of visited customer IDs (for this truck's current route)
+  
+    **V0:
+    - Position: current (x, y) or depot ID
+    - Truck type: A, B, or C (determines capacity and access permissions)
+    - Home depot: depot ID (0–D) where truck returns at end of day
+    - Route state: list of visited customer IDs (for this truck's current route)
+
+
+    *Node Features (per customer)*:
+    - Geographic location: (x, y) in coordinate space
+    - Demand vector: [quantity, weight_kg, volume_m3]
+    - Time window: [ready_time_min, due_time_min] relative to day start
+    - Truck compatibility: which truck types can serve (access restrictions)
+    - Client type: binary flag (agrocenter=1, other=0)
+    - Visitation status: unvisited, visited by truck_i, or completed
+  
+    **V0:
+    - Geographic location: (x, y) in coordinate space
+    - Demand vector: [quantity]
+    - Visitation status: unvisited, visited by truck_i, or complete
+
+    *Graph Edges*:
+    - **Truck-to-Customer edges**: 
+      - Distance/time from truck's current location to each unvisited customer
+      - Feasibility mask: 1 if feasible (truck type access + capacity + time window), 0 otherwise
+    - **Truck-to-depot edges**:
+      - Distance/time from truck's current location to any of the D depots (for return or re-pickup)
+      - Feasibility: always available (to end route or re-pickup)
+    - **Customer-to-depot edges** (for re-pickup feasibility):
+      - Distance/time from customer location to nearby depots
+      - Used to determine if truck can feasibly reach a depot for re-pickup after delivery
+
+    **V0:
+    - **Truck-to-Customer edges**: 
+      - Distance/time from truck's current location to each unvisited customer
+    - **Truck-to-depot edges**:
+      - Distance/time from truck's current location to any of the D depots (for return or re-pickup)
+      - Feasibility: always available (to end route or re-pickup)
+    - **Customer-to-depot edges** (for re-pickup feasibility):
+      - Distance/time from customer location to nearby depots
+      - Used to determine if truck can feasibly reach a depot for re-pickup after delivery
+
+  - **ACTION** (Fleet-Level Customer Assignment)
+    Action space: **MultiDiscrete array of length**
+    - Each element: customer_id ∈ [0, N] or action = N (return to depot)
+    - Semantics: assign one customer (or depot action) to each truck **simultaneously** in a single step
+    - Example: 
+      - Truck 0 → visit customer 3
+      - Truck 1 → visit customer 7
+      - Truck 1 → return to its home depot
+      - Truck 2 → visit customer 2
+      - ... (T trucks total)
+      - Truck T-1 → return to its home depot
+
+    *Constraints on Actions*:
+    - Each customer assigned to at most one truck per step (no duplicate assignments)
+    - Truck can only visit a customer if feasible:
+      - Truck type matches customer access requirements
+      - Truck has remaining capacity (weight, volume, load count)
+      - Truck has remaining time (won't exceed 12-hour limit)
+      - Customer's time window is still open (arrival_time ≤ due_time)
+    - If truck selects action = N (depot), it returns to its home depot, clears its load, and resets for next route
+    - All feasibility checks are **masked at the policy level** (infeasible actions blocked before softmax)
+
+    -*Packing Decision*:
     - Given selected customer's goods, decide which pallet type to use
     - Decide item placement within pallet (heuristic guillotine or learned policy)
     - Decide which truck route the goods go into (if multi-route)
+  
+    **V0:
+    Action space: 
+    - Each element: customer_id ∈ [1] or action = N (return to depot)
+    - Example: 
+      - Truck 0 → visit customer 3
+      - Truck 0 → visit customer 5
+      - Truck 0 → return to its home depot
 
-  - REWARD:
+    *Constraints on Actions*:
+    - Each customer assigned to at most one truck per step (no duplicate assignments)
+    - Truck can only visit a customer if feasible:
+    - If truck selects action = N (depot), it returns to its home depot, clears its load, and resets for next route
+    - All feasibility checks are **masked at the policy level** (infeasible actions blocked before softmax)
+
+
+  - **REWARD** (Global Fleet Cost Minimization)
     Multi-component scalar reward (normalized weighted sum):
 
-    R(t) = α · r_routing + β · r_packing + γ · r_feasibility + δ · r_completion
+    **R(t) = A · r_routing + B · r_efficiency + C · r_completion** 
+    
+    A/B/C are reward weights, these are empirical hyperparameters (to be tuned and validated during training)
 
-    r_routing = -travel_distance_increment - 0.1 · travel_time_increment
-                (negative because we minimize cost)
+    **V0:
+    **R(t) = A · r_routing** 
 
-    r_packing = +0.5 if new item fits in current truck
-                -10.0 if packing infeasible (hard constraint violation)
-                +packing_utilization_gain (reward better volume usage)
 
-    r_feasibility = 0 if no constraint violated
-                    -100.0 per time-window violation (due date missed)
-                    -50.0 per truck capacity violation (weight or volume)
-                    -30.0 per access restriction violation (truck type can't serve)
+    **Key Principle**: All hard constraints (capacity, time window, truck access) are enforced **exclusively via action masking**. The reward function focuses only on optimizing cost and utilization. This prevents the policy from learning infeasible assignments in the first place.
 
-    r_completion = +1000.0 if all deliveries done & returned to depot
-                  +500.0 per successful delivery before due date
-                  -200.0 per undelivered customer (episode end penalty)
+    **r_routing** (travel cost penalty, applies per assignment):
+    ```
+    For each truck→customer assignment in this step:
+      distance = euclidean_distance(truck.position, customer.location)
+      travel_time = distance / avg_speed (minutes)
+      r_routing -= 0.1 * travel_time  # where travel_time = distance / avg_speed
+
+    (negative cost; encourages short, fast deliveries)
+    ```
+
+    **r_efficiency** (truck utilization maximization):
+    Encourage loading trucks to high capacity. Vehicle count is NOT explicitly minimized; it emerges naturally from cost optimization.
+    ```
+    For each truck with assigned customers:
+      utilization = current_load / truck.max_capacity
+      if utilization > 0.8: r_efficiency += 5.0   (strong bonus for well-loaded trucks)
+      elif utilization > 0.5: r_efficiency += 2.0 (moderate bonus for adequately loaded trucks)
+      elif utilization < 0.3: r_efficiency -= 1.0 (mild penalty for significantly underfilled trucks)
+    ```
+    **Rationale**: Maximize how full each truck is, not how many trucks are used. The distance/time cost in r_routing naturally incentivizes fuller trucks: adding an underutilized truck increases total distance/time cost, so the policy learns to consolidate loads.
+
+    **r_completion** (terminal reward, only at episode end):
+    - If all customers delivered AND all trucks returned to home depots:
+      ```
+      r_completion = +500.0 (successful episode)
+      ```
+    - Bonus for early/on-time delivery:
+      ```
+      For each customer delivered before due_time:
+        r_completion += 20.0
+      ```
+    - Penalty for missed deliveries:
+      ```
+      For each customer not delivered at episode end:
+        r_completion -= 200.0
+      ```
+
+    **Action Masking (Feasibility Enforcement)**:
+    Before the policy outputs action probabilities, all infeasible (truck, customer) pairs are masked:
+    - ✅ Truck type access: mask if customer not in truck's allowed types [A, B, C]
+    - ✅ Capacity constraint: mask if assigning customer would exceed truck's max weight/volume/load
+    - ✅ Time window constraint: mask if truck cannot arrive before customer's due_time
+    - ✅ Duplicate prevention: mask if customer already assigned this step to another truck
+    - The policy only sees feasible actions, so it learns **only valid assignments**
+    - The softmax and sampling are applied **after masking**, ensuring 100% feasibility
+   
+   
+
+    **Total Reward at Step t**:
+    ```
+    R(t) = A * r_routing + B * r_efficiency + C * r_completion
+    (weights normalized; adjust empirically during training)
+    All components assume masked, feasible actions only.
+    ```
+    **V0: 
+    R(t) = A * r_routing
+
+
+
+
+
+    **Episode Termination Conditions**:
+    - **Success**: All N customers delivered + all T trucks returned to their home depots
+    - **Truncation**: Max steps exceeded (e.g., 2000 steps for large instances) → incomplete episode
+    - **Feasibility Guarantee**: With action masking, all delivered customers satisfy time windows, capacity, and access constraints
+    
+    **V0:
+    - **Success**: All N customers delivered by 1 truck T
+    - **Truncation**: Max steps exceeded (e.g., 50 steps for large instances) → incomplete episode
+
 
 
 
@@ -166,8 +339,6 @@ Design a system that:
 
 
 
-> **New Track D — GNN-Guided Heuristics**
-> Learn to score edges/customers/moves; plug scores into a classical local search (ruin & recreate, 2-opt/3-opt, relocate, swap). Gains speed without sacrificing feasibility.
 
 ---
 
@@ -192,7 +363,7 @@ Design a system that:
 - Vehicles: capacities, skills, compatibility, breaks/hours.
 - Distance/Time: matrices by time-of-day or features from a road graph.
 - Packing: item dimensions, weight, stacking rules, fragility, orientation.
-- Objectives: cost, lateness penalties, #vehicles, CO₂/fairness weights.
+- Objectives: minimize cost (distance + time), maximize truck utilization, respect SLA lateness constraints, CO₂/fairness weights (V3+).
 
 ---
 
@@ -210,11 +381,11 @@ Design a system that:
 - Constraint masking for capacity, time windows, and precedence.
 
 ### Step 4: Integration
-- Combine routing and packing feasibility checks.
+- Combine routing (and V2-packing feasibility checks).
 - Run validator/repair; then a short OR local search for final quality.
 
 ### Step 5: Evaluation
-- Metrics: total cost, % feasible routes, packing utilization, vehicles used, lateness.
+- Metrics: total cost (distance + time), average truck utilization, % feasible routes, lateness.
 - Runtime distribution (p50, p95); per-instance gap to best-known baseline.
 
 ---
@@ -241,7 +412,7 @@ Design a system that:
 ---
 
 ## 8. Evaluation Metrics
-- **Routing**: total distance/time, vehicles used, lateness, missed windows (must be zero after repair).
+- **Routing**: total distance/time cost, average truck utilization (%), lateness, missed windows (must be zero after repair).
 - **Packing**: feasibility rate, utilization, violation types (overstack, orientation).
 - **Operational**: runtime p50/p95, % instances solved within SLA, gap to baseline.
 - **Robustness**: stress tests—peak loads, extreme time windows, long-tail distances; generalization to new depots/sizes.
@@ -267,6 +438,7 @@ Includes:
 
 ## 11. Extensions
 - Multi-truck, multi-depot, heterogeneous fleet.
+- Packing goods into pallets.
 - Time windows and driver hours-of-service.
 - Learned packing policy and dock scheduling.
 
@@ -276,6 +448,17 @@ Includes:
 - **Feasibility leakage** → Always run validator + repair; never ship routes with violations.
 - **Distribution shift** → Train on mixed synthetic + real; schedule monthly fine-tunes.
 - **Overfitting to size** → Curriculum across instance sizes; test generalization.
-- **Opaque objectives** → Document scalarization and trade-offs; include fairness/CO₂ as explicit terms.
-- **Latency spikes** → Batch inference; maintain OR-only fallback for edge cases.
 ``
+
+
+---
+## 13. Simplifications
+  Only 1 truck, and 1 depot
+  Remove packing/pallets section
+  Remove client type distinctions
+  Remove time windows
+  Remove driver hour limits
+  Simplify the truck state (no elapsed time, no time window constraints)
+  Simplify customer features (no time windows, no client type)
+  Simplify action masking (no time window checks, no hour limit checks)
+  Simplify reward functions (remove time-based penalties)
