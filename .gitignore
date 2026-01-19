@@ -1,0 +1,17 @@
+# --- Python Cache ---
+__pycache__/
+*.pyc
+
+# --- Training Outputs ---
+checkpoints/
+wandb/
+
+# --- Local Data & Environments ---
+data/
+.venv/
+env/
+.env
+
+# --- OS Specific ---
+.DS_Store
+Thumbs.db
