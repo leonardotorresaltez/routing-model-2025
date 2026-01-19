@@ -39,24 +39,31 @@ Design a system that optimizes routing for a fleet of trucks as a single unit, a
 ---
 
 ## 3. Environment Definition
-
+[Leo comment] can we change the title, something like "Reinforcment learning definition"   
 ### STATE (Multi-Agent Graph)
 
 **Graph Nodes**:
+[Leo comment] i think there is only one graph node with many locations ( home and customers)
+
 - **Truck Nodes** (T total, one per truck):
+- [Leo comment] what is the meaning of T, D , etc
   - Current location: (x, y) coordinate
   - Home depot: depot ID where truck must return at day end
   - Current load: total volume of assigned customers (kg)
   - Max capacity: maximum volume truck can carry (kg)
   - Route: list of visited customer IDs
+[Leo comment] y suggest to put some example and data type for each
+[Leo comment] "current load" and "max capacity" is cubic meters, isn't it ?
 
 - **Depot Nodes** (D static):
   - Fixed location (x, y)
   - Each truck assigned to exactly one home depot
+[Leo comment] is not the same as Home depot ?
 
 - **Customer Nodes** (N undelivered customers):
   - Location: (x, y) coordinate
   - volume: customer delivery volume (kg)
+[Leo comment] a customer has a maximun to deliver ?
 
 **Node Features (per truck)**:
 - Position: current (x, y)
@@ -69,11 +76,12 @@ Design a system that optimizes routing for a fleet of trucks as a single unit, a
 - Location: (x, y)
 - volume: delivery volume (kg)
 - Visitation status: unvisited or visited
+[Leo comment] why we need per customer?
 
 **Graph Edges**:
 - **Truck-to-Customer**: Distance from truck's current location to each unvisited customer
 - **Truck-to-Depot**: Distance from truck's current location to all depots
-
+[Leo comment] why we need truck-to-all depots?
 ---
 
 ### ACTION (Fleet-Level Assignment)
@@ -82,14 +90,14 @@ Design a system that optimizes routing for a fleet of trucks as a single unit, a
 - Each element: customer_id ∈ [0, N] or action = N (return to home depot)
 - Semantics: Assign one customer to each truck simultaneously
 - Example: `action = [cust_3, cust_5, depot, cust_2, ..., depot]`
-
+[Leo comment] sorry i do not understand this point, i think the action is choose the next customer.
 **Action Constraints**:
 - Each customer assigned to at most one truck per step
 - Truck can visit customer only if:
   - Truck has remaining capacity: `current_load + customer.volume ≤ truck.max_capacity`
   - Action masking prevents capacity violations (infeasible actions blocked)
 - If truck selects action = N (depot): returns to home depot, clears load, resets for next route
-
+[Leo comment] truck capacity is set at the begining , why a truck can visit a customer only if has remaining capacity?
 ---
 
 ### REWARD (Minimize Distance + Maximize Utilization)
