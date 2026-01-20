@@ -14,7 +14,7 @@ def set_seed(seed):
     np.random.seed(seed)
     random.seed(seed)
 
-def main():
+def train():
     cfg = parse_args()
     set_seed(cfg.seed)
     os.makedirs("checkpoints", exist_ok=True)
@@ -46,8 +46,15 @@ def main():
             episode_reward += reward.item()
             
         loss = agent.update()
+        
+        # Logging to console
+        if episode % 50 == 0:
+            print(
+                f"Episode {episode:4d} | "
+                f"Total reward: {episode_reward:.3f}"
+            )
 
-        # Logging
+        # Logging to W&B
         if cfg.wandb:
             wandb.log({
                 "reward": episode_reward,
@@ -66,4 +73,4 @@ def main():
         wandb.finish()
 
 if __name__ == "__main__":
-    main()
+    train()

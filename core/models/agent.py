@@ -1,17 +1,23 @@
 import torch
 import torch.optim as optim
 from core.models.policy import AttentionPolicy
+from core.models.policy import  GraphPointerPolicy
 
 class REINFORCEAgent:
     def __init__(self, cfg):
         self.cfg = cfg
-        self.policy = AttentionPolicy(embed_dim=cfg.embed_dim)
+        self.policy = GraphPointerPolicy(embed_dim=cfg.embed_dim)
         self.policy.to(cfg.device)
         self.optimizer = optim.Adam(self.policy.parameters(), lr=cfg.lr)
+        
+        # Buffers for REINFORCE
         self.log_probs = []
         self.rewards = []
 
     def act(self, state):
+        """
+        state = (nodes, current_node, visited_mask)
+        """        
         nodes = state["nodes"].to(self.cfg.device)
         visited = state["visited"].to(self.cfg.device)
         current = state["current"]
@@ -27,6 +33,9 @@ class REINFORCEAgent:
         self.rewards.append(reward)
 
     def update(self):
+        """
+        Policy Gradient (REINFORCE)
+        """        
         R = 0
         policy_loss = []
         returns = []
@@ -48,6 +57,7 @@ class REINFORCEAgent:
         loss.backward()
         self.optimizer.step()
         
-        self.log_probs = []
-        self.rewards = []
+        # Clear buffers
+        self.log_probs.clear()
+        self.rewards.clear()
         return loss.item()
