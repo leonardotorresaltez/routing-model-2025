@@ -41,6 +41,12 @@ class REINFORCEAgent:
         returns = []
         
         # Calculate Returns (Cumulative Reward from t to T)
+        # example:
+        # Step 	reward	return
+        # 3	    -0.2	-0.2
+        # 2	    -2.0	-2.2
+        # 1	    -0.5	-2.7
+        # 0	    -1.0	-3.7
         for r in reversed(self.rewards):
             R = r + R # No discount factor for simple TSP usually, or use 0.99
             returns.insert(0, R)
