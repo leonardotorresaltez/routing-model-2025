@@ -12,7 +12,8 @@ class TSPEnv(gym.Env):
         self.num_nodes = cfg.num_nodes
         self.action_space = spaces.Discrete(self.num_nodes)
         self.observation_space = spaces.Dict({
-            "nodes": spaces.Box(0.0, 1.0, (self.num_nodes, 2), dtype=np.float32),
+            "nodes": spaces.Box(0.0, 1.0, (self.num_nodes, 2), dtype=np.float32), # TODO: Fixed nodes from a csv
+            # TODO: Take adjacency distance matrix from a csv
             "current": spaces.Discrete(self.num_nodes),
             "visited": spaces.MultiBinary(self.num_nodes)
         })
