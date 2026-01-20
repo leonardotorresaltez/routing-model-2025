@@ -66,20 +66,44 @@ class GraphPointerPolicy(nn.Module):
         # ======================
         # 1️ Encode graph nodes
         # ======================
+        
+        #embed nodes , shape is N=number of nodes, D=embed_dim
         h = self.node_embed(nodes)        # [N, D]
-
+        # example nodes tensor([[0.1, 0.2],  # Nodo 1
+        #                       [0.3, 0.4],  # Nodo 2
+        #                       [0.5, 0.6],  # Nodo 3
+        #                       [0.7, 0.8],  # Nodo 4
+        #                       [0.9, 1.0]]) # Nodo 5
+        
+        #example h embedding tensor after node_embed layer
+        #torch.tensor([[ 0.1234, -0.5678, ..., 0.9876],  # Embedding del nodo 1 [128 valores]
+        #[ 0.2345, -0.6789, ..., 1.0987],  # Embedding del nodo 2
+        #[ 0.3456, -0.7890, ..., 1.2098],  # Embedding del nodo 3
+        #[ 0.4567, -0.8901, ..., 1.3209],  # Embedding del nodo 4
+        #[ 0.5678, -0.9012, ..., 1.4320]]) # Embedding del nodo 5        
+        
         # ======================
         # 2️ Graph message passing (mean aggregation)
         # ======================
+        
+        #mean of embedded nodes, dim=0 means in which dimension to take the mean
+        #example:  tensor([[ 0.3456, -0.7674, ..., 1.2098]])   - one vector of size D
         graph_context = h.mean(dim=0, keepdim=True)   # [1, D]
+        #update node embeddings with graph context
         h = h + self.msg_linear(graph_context)        # [N, D]
+
+
 
         # ======================
         # 3️ Pointer attention
         # ======================
+        
+        #query based on current node
         q = self.query(h[current_idx])    # [D]
+        #keys for all nodes
         k = self.key(h)                   # [N, D]
 
+        #compute attention scores
         scores = torch.matmul(k, q)       # [N]
         scores = scores.masked_fill(visited_mask, -1e9)
 
