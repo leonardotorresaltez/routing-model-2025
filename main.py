@@ -1,69 +1,90 @@
 import torch
-import random
 import numpy as np
-import os
+import random
+import matplotlib.pyplot as plt
 import wandb
-from tqdm import tqdm
 
-from configs.config import parse_args
-from core.envs.tsp_env import TSPEnv
-from core.models.agent import REINFORCEAgent
+from configs.config  import parse_args
+from core.envs.multigraph_env import MultiGraphEnv
+from core.models.multi_agent import MultiAgentREINFORCE
 
 def set_seed(seed):
-    torch.manual_seed(seed)
-    np.random.seed(seed)
     random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
 
 def main():
     cfg = parse_args()
     set_seed(cfg.seed)
-    os.makedirs("checkpoints", exist_ok=True)
-    
-    # --- W&B Init ---
+
     if cfg.wandb:
         wandb.init(
-            project=cfg.project_name, 
-            name=cfg.run_name, 
+            project=cfg.project_name,
+            name=cfg.run_name,
             config=vars(cfg)
         )
 
-    print(f"--> STARTING RUN: {cfg.run_name}")
-    env = TSPEnv(cfg)
-    agent = REINFORCEAgent(cfg)
+    env = MultiGraphEnv(cfg)
+    agent = MultiAgentREINFORCE(cfg)
 
-    # Training Loop
-    # Using tqdm for a nice progress bar
-    pbar = tqdm(range(cfg.episodes))
-    for episode in pbar:
+    rewards = []
+
+    # -----------------------------
+    # TRAINING LOOP
+    # -----------------------------
+    for ep in range(cfg.episodes):
         state, _ = env.reset()
         terminated = False
-        episode_reward = 0.0
-        
-        while not terminated:
-            action = agent.act(state)
-            state, reward, terminated, _, _ = env.step(action)
+        truncated = False
+        ep_reward = 0
+
+        # TRAINING rollout (NO no_grad)
+        while not (terminated or truncated):
+            actions = agent.act(state, eval_mode=False)
+            state, reward, terminated, truncated, _ = env.step(actions)
             agent.store_reward(reward)
-            episode_reward += reward.item()
-            
+            ep_reward += reward
+
         loss = agent.update()
+        rewards.append(ep_reward)
 
-        # Logging
         if cfg.wandb:
-            wandb.log({
-                "reward": episode_reward,
-                "loss": loss,
-                "episode": episode
-            })
-            
-        pbar.set_description(f"Rw: {episode_reward:.2f}")
+            wandb.log({"episode": ep, "reward": ep_reward, "loss": loss})
 
-    # Save
-    path = f"checkpoints/{cfg.run_name}.pt"
-    torch.save(agent.policy.state_dict(), path)
-    print(f"--> SAVED: {path}")
-    
+        if (ep + 1) % cfg.log_interval == 0:
+            print(f"Episode {ep+1}/{cfg.episodes} | Reward: {ep_reward:.3f} | Loss: {loss:.4f}")
+
+    # -----------------------------
+    # EVALUATION LOOP (AFTER TRAINING)
+    # -----------------------------
+    eval_env = MultiGraphEnv(cfg)
+    state, _ = eval_env.reset()
+    terminated = False
+    truncated = False
+    eval_reward = 0
+
+    with torch.no_grad():
+        while not (terminated or truncated):
+            actions = agent.act(state, eval_mode=True)  # GREEDY
+            state, reward, terminated, truncated, _ = eval_env.step(actions)
+            eval_reward += reward
+
+    print(f"\nFinal Evaluation Reward: {eval_reward}")
+
+    if cfg.wandb:
+        wandb.log({"final_eval_reward": eval_reward})
+
+    # -----------------------------
+    # PLOT TRAINING REWARD CURVE
+    # -----------------------------
+    plt.plot(rewards)
+    plt.title("Training Reward Curve")
+    plt.xlabel("Episode")
+    plt.ylabel("Reward")
+    plt.show()
+
     if cfg.wandb:
         wandb.finish()
-
+    
 if __name__ == "__main__":
     main()

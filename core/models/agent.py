@@ -1,5 +1,6 @@
 import torch
 import torch.optim as optim
+from core.envs.tsp_env import TSPEnv
 from core.models.policy import AttentionPolicy
 
 class REINFORCEAgent:
@@ -11,7 +12,7 @@ class REINFORCEAgent:
         self.log_probs = []
         self.rewards = []
 
-    def act(self, state):
+    def act(self, state,eval_mode=False):
         nodes = state["nodes"].to(self.cfg.device)
         visited = state["visited"].to(self.cfg.device)
         current = state["current"]
@@ -20,7 +21,11 @@ class REINFORCEAgent:
         dist = torch.distributions.Categorical(probs)
         action = dist.sample()
         
-        self.log_probs.append(dist.log_prob(action))
+        if eval_mode:
+            action = torch.argmax(probs).unsqueeze(0)
+        else: 
+            action = dist.sample()
+            self.log_probs.append(dist.log_prob(action))
         return action.item()
 
     def store_reward(self, reward):
@@ -51,3 +56,19 @@ class REINFORCEAgent:
         self.log_probs = []
         self.rewards = []
         return loss.item()
+    def evaluate_mode(self, cfg):
+        env = TSPEnv(cfg)
+        state, _ = env.reset()
+        terminated = False
+        total_reward = 0
+        route_sequence = [state["current"]]
+
+        self.policy.eval()
+        with torch.no_grad():
+            while not terminated:
+                action = self.act(state, eval_mode=True)
+                state, reward, terminated, _, _ = env.step(action)
+                total_reward += reward
+                route_sequence.append(action)
+
+        return total_reward, route_sequence
