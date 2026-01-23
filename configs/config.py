@@ -11,7 +11,9 @@ class Config:
     wandb: bool = True  # Toggle W&B logging
 
     # --- Environment ---
-    num_nodes: int = 10
+    num_sources: int = 2
+    num_targets: int = 10
+    num_trucks: int = 5
     
     # --- Model ---
     embed_dim: int = 128
@@ -40,7 +42,7 @@ def parse_args() -> Config:
     run_name = f"N{args.nodes}_lr{args.lr}_sd{args.seed}"
     
     return Config(
-        num_nodes=args.nodes,
+       
         lr=args.lr,
         episodes=args.episodes,
         embed_dim=args.embed_dim,

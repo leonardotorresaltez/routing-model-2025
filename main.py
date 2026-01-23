@@ -7,7 +7,7 @@ from tqdm import tqdm
 
 from configs.config import parse_args
 from core.envs.tsp_env import TSPEnv
-from core.models.agent import REINFORCEAgent
+from core.models.agent import REINFORCEFleetAgent
 
 def set_seed(seed):
     torch.manual_seed(seed)
@@ -29,7 +29,7 @@ def train():
 
     print(f"--> STARTING RUN: {cfg.run_name}")
     env = TSPEnv(cfg)
-    agent = REINFORCEAgent(cfg)
+    agent = REINFORCEFleetAgent(cfg)
 
     # Training Loop
     # Using tqdm for a nice progress bar
@@ -41,7 +41,7 @@ def train():
         
         while not terminated:
             action = agent.act(state)
-            state, reward, terminated, _, _ = env.step(action)
+            state, reward, terminated = env.step(action)
             agent.store_reward(reward)
             episode_reward += reward.item()
             
