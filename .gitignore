@@ -7,7 +7,7 @@ checkpoints/
 wandb/
 
 # --- Local Data & Environments ---
-data/
+
 .venv/
 env/
 .env
