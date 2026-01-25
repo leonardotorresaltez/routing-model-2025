@@ -7,28 +7,28 @@
 ---
 
 **Main objectives:**
-1. Deliver goods to all clients (no deadline constraints).
+1. Deliver goods from depots to all customers, with no deadline constraints.
 2. Minimize total travel distance for the fleet.
 3. Maximize volume utilization on each truck.
 
 **V0
-1. For 1 truck, deliver all the goods with the less distance/time as possible
+1. For 1 truck, deliver all the goods with the less distance as possible
 
 ## 1. Problem Statement
 Design a system that:
 - Optimizes routing for all vehicles as a single fleet 
 - Starts the day at a depot.
-- Delivers goods to their destinations.
+- Delivers goods from depots to their destinations (customers).
 - Packs goods properly in the pallets (3D packing constraints).
 - Packs pallets properly in the truck (3D packing constraints).
 - May go to pick up goods at a new depot nearby the last delivery of the last route.
 - Ends the day (deliveries) at the starting point depot.
 
 **V0
-- Optimizes routing for 1 vehicle 
+- Optimizes routing for a single vehicle instead of the entire fleet. 
 - Starts the day at a depot.
-- Delivers goods to their destinations/customers.
-- Ends the day at the starting point depot.
+- Delivers goods to all destinations/customers.
+
 
 **Key Insight**: We make parallel routing decisions across all trucks in a single episode, minimizing **global fleet cost** (total distance + time) while maximizing truck utilization (weight + capacity loading). Vehicle count is not explicitly minimized; instead, it emerges naturally as the cost function incentivizes fuller trucks.
 
@@ -122,7 +122,7 @@ Design a system that:
       - Home depot: which of D depots the truck belongs to (return point at day end)
     
     - **Depot Nodes**  (D static):
-      - Fixed loading point locations (x, y)
+      - Fixed loading point locations (x, y) 
       - Truck bases (each truck assigned to one depot)
       - Optional re-pickup points (trucks may visit nearby depots after deliveries)
     
@@ -132,10 +132,14 @@ Design a system that:
       - Time window: [ready_time, due_time] (minutes from day start)
       - Truck access restrictions: [can_A, can_B, can_C]
       - Client type: agrocenter vs. other (affects SLA urgency)
+
+    - **Already visited nodes**  
+      - Locations: (x, y)        
   
       **V0:
-      - Location: (x, y) coordinate
-      - Demand: quantity (units)
+      - Truck curent location: (x, y) coordinate
+      - already visited nodes
+      - Depot and Customer nodes (x,y)
 
 
 
@@ -153,10 +157,8 @@ Design a system that:
     - Route state: list of visited customer IDs (for this truck's current route)
   
     **V0:
-    - Position: current (x, y) or depot ID
-    - Truck type: A, B, or C (determines capacity and access permissions)
-    - Home depot: depot ID (0–D) where truck returns at end of day
-    - Route state: list of visited customer IDs (for this truck's current route)
+    - Position: current (x, y) 
+
 
 
     *Node Features (per customer)*:
@@ -168,9 +170,8 @@ Design a system that:
     - Visitation status: unvisited, visited by truck_i, or completed
   
     **V0:
-    - Geographic location: (x, y) in coordinate space
-    - Demand vector: [quantity]
-    - Visitation status: unvisited, visited by truck_i, or complete
+    - Position: current (x, y) 
+    
 
     *Graph Edges*:
     - **Truck-to-Customer edges**: 
@@ -184,14 +185,8 @@ Design a system that:
       - Used to determine if truck can feasibly reach a depot for re-pickup after delivery
 
     **V0:
-    - **Truck-to-Customer edges**: 
-      - Distance/time from truck's current location to each unvisited customer
-    - **Truck-to-depot edges**:
-      - Distance/time from truck's current location to any of the D depots (for return or re-pickup)
-      - Feasibility: always available (to end route or re-pickup)
-    - **Customer-to-depot edges** (for re-pickup feasibility):
-      - Distance/time from customer location to nearby depots
-      - Used to determine if truck can feasibly reach a depot for re-pickup after delivery
+    - **node-to-node edges**: 
+      - Distance/time from truck's current location to next one
 
   - **ACTION** (Fleet-Level Customer Assignment)
     Action space: **MultiDiscrete array of length**
