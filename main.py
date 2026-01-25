@@ -28,12 +28,25 @@ def train():
         )
 
     print(f"--> STARTING RUN: {cfg.run_name}")
-    env = TSPEnv(cfg)
+    
+    # Node coordinates
+        #example if self.nodes = 5
+        #tensor([
+        #[0.12, 0.77],   # node 0 (source)
+        #[0.44, 0.91],   # node 1 (source)
+        #[0.80, 0.13],   # node 2 (target)
+        #[0.33, 0.59],   # node 3 (target)
+        #[0.95, 0.22],   # node 4 (target)
+        #])        
+    nodes = torch.rand(cfg.num_sources + cfg.num_targets, 2)
+
+    env = TSPEnv(cfg, nodes)
     agent = REINFORCEFleetAgent(cfg)
 
     # Training Loop
     # Using tqdm for a nice progress bar
     pbar = tqdm(range(cfg.episodes))
+    print("episode is=", cfg.episodes)
     for episode in pbar:
         state, _ = env.reset()
         terminated = False
