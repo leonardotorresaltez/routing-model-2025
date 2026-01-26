@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+
 # ----------------------------
 # Attention-based Policy Model
 # ----------------------------
@@ -43,6 +44,14 @@ class AttentionPolicy(nn.Module):
 # GraphPointer Policy Model
 # ----------------------------    
 class GraphPointerPolicy(nn.Module):
+    """
+    This is the Agent's Brain.
+
+    It uses a Graph Neural Network to "look" at all locations at once.
+    It uses an Attention Mechanism (Pointer) to calculate a probability for every possible next stop.
+    Masking: It specifically ignores customers that have already been visited so the truck doesn't go to the same place twice.
+
+    """
     def __init__(self, node_dim=2, embed_dim=128):
         super().__init__()
 
@@ -57,7 +66,8 @@ class GraphPointerPolicy(nn.Module):
         self.key = nn.Linear(embed_dim, embed_dim)
 
     def forward(self, nodes, current_idx, visited_mask):
-        """
+        
+        """        
         nodes: [N, node_dim]
         current_idx: int
         visited_mask: [N] bool
@@ -88,9 +98,9 @@ class GraphPointerPolicy(nn.Module):
         
         #mean of embedded nodes, dim=0 means in which dimension to take the mean
         #example:  tensor([[ 0.3456, -0.7674, ..., 1.2098]])   - one vector of size D
-        graph_context = h.mean(dim=0, keepdim=True)   # [1, D]
+        graph_context = h.mean(dim=0, keepdim=True)   # [1, D], calculate the average of all nodes (Global context)
         #update node embeddings with graph context
-        h = h + self.msg_linear(graph_context)        # [N, D]
+        h = h + self.msg_linear(graph_context)        # [N, D], every node "learns" about the rest of the graph
 
 
 

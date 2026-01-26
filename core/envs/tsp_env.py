@@ -56,10 +56,14 @@ class TSPEnv(gym.Env):
 
 class MDVRPEnv(gym.Env):
     """ 
-    single-step reward calculation based on the total travel time of all 50 trucks.
+    Summary: It contains the "map" (locations of depots and customers) and the "rules" (trucks must start at their depot and visit customers).
     
+    State: It tells the Agent which nodes exist and which ones have already been visited.
+    Reward: It calculates the "score." Since the goal is to be efficient, it gives a negative reward based on total travel time (shorter routes = less negative = better score).
+    
+    
+    single-step reward calculation based on the total travel time of all 50 trucks.    
     Single-Step Journey: It calculates all 50 routes at once and returns terminated=True.
-    No Euclidean Norm: It uses the actual time_matrix values from your files.
     Multi-Depot Return: Each truck returns to its specific depot_idx.
     """
     def __init__(self, cfg, data):
@@ -86,6 +90,8 @@ class MDVRPEnv(gym.Env):
 
     def step(self, action):
         """
+        The environment is the "judge" that calculates how well the agent performed.
+        
         action: Dict[truck_id, List[customer_idx]]
         """
         total_time = 0.0
@@ -119,5 +125,8 @@ class MDVRPEnv(gym.Env):
         # One-shot: always returns terminated=True
         return self._get_obs(), reward, True, False, {"total_time": total_time}
 
-    def _get_obs(self):
+    def _get_obs(self): 
+        """
+        The environment is responsible for telling the agent what the world looks like.
+        """
         return {"node_features": self.node_features.clone()}
