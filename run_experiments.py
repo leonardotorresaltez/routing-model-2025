@@ -1,6 +1,6 @@
+import itertools
 import subprocess
 import sys
-import itertools
 
 # --- DEFINITION OF EXPERIMENTS ---
 # Add whatever values you want to test here
@@ -26,8 +26,8 @@ def run_grid():
             command.append(f"--{key}")
             command.append(str(value))
             
-        # Optional: Add common flags (e.g., lower episodes for testing)
-        command.extend(["--episodes", "500"])
+        # # Optional: Add common flags (e.g., lower episodes for testing)
+        # command.extend(["--episodes", "500"])
         
         # Execute
         subprocess.run(command)

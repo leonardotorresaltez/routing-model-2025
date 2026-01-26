@@ -1,6 +1,7 @@
 import argparse
 from dataclasses import dataclass
 
+
 @dataclass
 class Config:
     # --- Experiment ---
@@ -18,15 +19,17 @@ class Config:
     
     # --- Training ---
     lr: float = 1e-3
-    episodes: int = 500
+    episodes: int = 100 # 500
     log_interval: int = 20
 
 def parse_args() -> Config:
+    
+    base_cfg = Config()
     parser = argparse.ArgumentParser()
     
     parser.add_argument("--nodes", type=int, default=10)
-    parser.add_argument("--lr", type=float, default=1e-3)
-    parser.add_argument("--episodes", type=int, default=500)
+    parser.add_argument("--lr", type=float, default=base_cfg.lr)
+    parser.add_argument("--episodes", type=int, default=base_cfg.episodes)
     parser.add_argument("--embed_dim", type=int, default=128)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--device", type=str, default="cpu")
