@@ -8,7 +8,7 @@ from gymnasium import spaces
 class TSPEnv(gym.Env):
     metadata = {"render_modes": []}
 
-    def __init__(self, cfg, nodes):
+    def __init__(self, cfg, nodes, current):
         super().__init__()
 #        self.num_nodes = cfg.num_nodes
 #        self.action_space = spaces.Discrete(self.num_nodes)
@@ -23,6 +23,7 @@ class TSPEnv(gym.Env):
         self.num_trucks = cfg.num_trucks
         self.num_nodes = cfg.num_sources + cfg.num_targets
         self.nodes = nodes
+        self.current = current  # list of current positions for each truck
 
     def reset(self):
 
@@ -38,15 +39,9 @@ class TSPEnv(gym.Env):
 
         # Initial truck positions (sources) , torch.arange generate unidimensional tensor with consecutive integers
         #example  tensor([0, 1])
-        source_indices = torch.arange(self.num_sources)
+        #source_indices = torch.arange(self.num_sources)
         
-        # Randomly select initial positions for trucks from sources
-        #Multiple trucks are allowed to start from the same source node
-        self.current = torch.randint(
-            low=0,
-            high=self.num_sources,
-            size=(self.num_trucks,)
-        ).tolist()
+
 
         # Visited targets (GLOBAL)
         #example tensor([False, False, False, False, False]), self.nodes = 5

@@ -40,7 +40,15 @@ def train():
         #])        
     nodes = torch.rand(cfg.num_sources + cfg.num_targets, 2)
 
-    env = TSPEnv(cfg, nodes)
+    # Randomly select initial positions for trucks from sources
+    #Multiple trucks are allowed to start from the same3 source node
+    current = torch.randint(
+            low=0,
+            high=cfg.num_sources,
+            size=(cfg.num_trucks,)
+    ).tolist()
+
+    env = TSPEnv(cfg, nodes,current)
     agent = REINFORCEFleetAgent(cfg)
 
     # Training Loop
