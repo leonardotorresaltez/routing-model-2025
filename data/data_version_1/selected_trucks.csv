@@ -1,0 +1,6 @@
+﻿id_truck,id_type,max_weight,width,length,height,id_depot
+1,Rigido3Ejes,15000,2.5,9.5,2.5,F1
+2,TrailerTorito,24000,2.5,11.0,2.5,F1
+3,Trailer3Ejes,27000,2.5,13.6,2.5,F1
+4,Rigido2Ejes,10000,2.5,7.5,2.5,F1
+5,Rigido2Ejes,10000,2.5,7.5,2.5,F1
