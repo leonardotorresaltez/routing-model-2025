@@ -1,76 +1,48 @@
-import torch
-import random
-import numpy as np
 import os
-import wandb
+import sys
+
+import torch
 from tqdm import tqdm
 
+import wandb
 from configs.config import parse_args
-from core.envs.tsp_env import TSPEnv
-from core.models.agent import REINFORCEAgent
+from core.envs.tsp_env import MDVRPEnv
+from core.models.agent import MDVRPREINFORCEAgent
+from core.utils.data_loader import MDVRPDataLoader
 
-def set_seed(seed):
-    torch.manual_seed(seed)
-    np.random.seed(seed)
-    random.seed(seed)
 
 def train():
     cfg = parse_args()
-    set_seed(cfg.seed)
     os.makedirs("checkpoints", exist_ok=True)
     
-    # --- W&B Init ---
+    # Load Real Data
+    loader = MDVRPDataLoader()
+    data = loader.load_data()
+
     if cfg.wandb:
-        wandb.init(
-            project=cfg.project_name, 
-            name=cfg.run_name, 
-            config=vars(cfg)
-        )
+        wandb.init(project="mdvrp-rl", name=cfg.run_name, config=vars(cfg))
 
-    print(f"--> STARTING RUN: {cfg.run_name}")
-    env = TSPEnv(cfg)
-    agent = REINFORCEAgent(cfg)
+    env = MDVRPEnv(cfg, data)
+    agent = MDVRPREINFORCEAgent(cfg, data)
 
-    # Training Loop
-    # Using tqdm for a nice progress bar
     pbar = tqdm(range(cfg.episodes))
     for episode in pbar:
         state, _ = env.reset()
-        terminated = False
-        episode_reward = 0.0
         
-        while not terminated:
-            action = agent.act(state)
-            state, reward, terminated, _, _ = env.step(action)
-            agent.store_reward(reward)
-            episode_reward += reward.item()
-            
+        # One-shot action
+        action = agent.act(state)
+        state, reward, _, _, info = env.step(action)
+        
+        agent.store_reward(reward)
         loss = agent.update()
         
-        # Logging to console
-        if episode % 50 == 0:
-            print(
-                f"Episode {episode:4d} | "
-                f"Total reward: {episode_reward:.3f}"
-            )
-
-        # Logging to W&B
         if cfg.wandb:
-            wandb.log({
-                "reward": episode_reward,
-                "loss": loss,
-                "episode": episode
-            })
+            wandb.log({"reward": reward, "loss": loss, "total_time": info["total_time"]})
             
-        pbar.set_description(f"Rw: {episode_reward:.2f}")
+        pbar.set_description(f"Time: {info['total_time']:.2f}h")
 
-    # Save
-    path = f"checkpoints/{cfg.run_name}.pt"
-    torch.save(agent.policy.state_dict(), path)
-    print(f"--> SAVED: {path}")
-    
-    if cfg.wandb:
-        wandb.finish()
+    torch.save(agent.policy.state_dict(), f"checkpoints/mdvrp_{cfg.run_name}.pt")
+    if cfg.wandb: wandb.finish()
 
 if __name__ == "__main__":
     train()
