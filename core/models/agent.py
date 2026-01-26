@@ -74,6 +74,13 @@ class REINFORCEAgent:
 
 
 class MDVRPREINFORCEAgent:
+    """
+    This is the Decision Maker that uses the brain.
+
+    Action: It calls the Policy repeatedly to build complete routes for all 50 trucks.
+    Memory: It stores the log_probs (how confident it was in its choices) and the rewards received.
+    Update: It uses the REINFORCE algorithm. If a journey had a good reward (short time), it "strengthens" the brain to make those choices more likely in the future.
+    """
     def __init__(self, cfg, data):
         self.cfg = cfg
         self.data = data
@@ -98,6 +105,9 @@ class MDVRPREINFORCEAgent:
         
         # Build routes sequentially for each truck
         for truck in self.data["trucks"]:
+            # # 1. Get nodes this specific truck is FORBIDDEN from visiting
+            # # (e.g., from a pre-defined constraint table)
+            # truck_forbidden_mask = self.data["constraints"][truck.id] 
             truck_route = []
             current_node = truck.depot_idx # each truck starts at its own depot
             
@@ -105,8 +115,13 @@ class MDVRPREINFORCEAgent:
             max_p_truck = (len(self.data["customers"]) // len(self.data["trucks"])) + 50
             
             for _ in range(max_p_truck):
+                # # 2. Combine with the global "visited" mask
+                # # The edge effectively "disappears" because we force the probability to 0
+                # combined_mask = visited_mask | truck_forbidden_mask
                 if visited_mask.all(): break
                     
+                # 3. Pass to policy
+                # probs = self.policy(node_features, current_node, combined_mask)
                 probs = self.policy(node_features, current_node, visited_mask)
                 if probs.sum() == 0: break
                     
@@ -116,6 +131,7 @@ class MDVRPREINFORCEAgent:
                 total_log_prob += dist.log_prob(action)
                 next_node = action.item()
                 truck_route.append(next_node)
+                visited_mask = visited_mask.clone()
                 visited_mask[next_node] = True
                 current_node = next_node
                 
