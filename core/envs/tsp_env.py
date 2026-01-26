@@ -7,31 +7,42 @@ from gymnasium import spaces
 class TSPEnv(gym.Env):
     metadata = {"render_modes": []}
 
-    def __init__(self, cfg):
+    def __init__(self, cfg,nodes, current):
         super().__init__()
         self.num_nodes = cfg.num_nodes
-        self.action_space = spaces.Discrete(self.num_nodes)
+        self.nodes = nodes
+        self.current = current
+        
+        # ---- Observation space ----
         self.observation_space = spaces.Dict({
-            "nodes": spaces.Box(0.0, 1.0, (self.num_nodes, 2), dtype=np.float32), # TODO: Fixed nodes from a csv
-            # TODO: Take adjacency distance matrix from a csv
-            "current": spaces.Discrete(self.num_nodes),
-            "visited": spaces.MultiBinary(self.num_nodes)
+            "nodes": spaces.Box(
+                low=0.0, high=1.0, shape=(self.num_nodes, 2), dtype=np.float32
+            ),
+            "visited": spaces.Box(
+                low=0, high=1, shape=(self.num_nodes,), dtype=np.int8
+            ),
+            "current": spaces.Discrete(self.num_nodes)
         })
+        self.current = current
+        
+        # ---- Action space ----
+        self.action_space = spaces.Discrete(self.num_nodes)
+
+        self.reset()
 
     def reset(self, seed=None, options=None):
         super().reset(seed=seed)
-        self.nodes = torch.rand(self.num_nodes, 2)
-        self.current = random.randrange(self.num_nodes)
+
         self.visited = torch.zeros(self.num_nodes, dtype=torch.bool)
         self.visited[self.current] = True
         self.tour = [self.current]
-        return self._get_state(), {}
+        return self._get_obs(), {}
 
-    def _get_state(self):
+    def _get_obs(self):
         return {
             "nodes": self.nodes.clone(),
-            "current": self.current,
-            "visited": self.visited.clone()
+            "visited": self.visited.clone().int(),
+            "current": int(self.current)
         }
 
     def step(self, action):
@@ -44,4 +55,4 @@ class TSPEnv(gym.Env):
         reward = -dist # Minimize distance = Maximize negative distance
 
         terminated = self.visited.all()
-        return self._get_state(), reward, terminated, False, {}
+        return self._get_obs(), reward, terminated, False, {}
