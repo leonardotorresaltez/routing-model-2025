@@ -53,7 +53,7 @@ class REINFORCEAgent:
             
         returns = torch.tensor(returns).to(self.cfg.device)
         # Normalize returns for stability
-        returns = (returns - returns.mean()) / (returns.std() + 1e-9)
+        #returns = (returns - returns.mean()) / (returns.std() + 1e-9)
         
         for log_prob, R in zip(self.log_probs, returns):
             policy_loss.append(-log_prob * R)

@@ -28,7 +28,22 @@ def train():
         )
 
     print(f"--> STARTING RUN: {cfg.run_name}")
-    env = TSPEnv(cfg)
+    
+    # Node coordinates
+        #example if self.nodes = 5
+        #tensor([
+        #[0.12, 0.77],   # node 0 (source)
+        #[0.44, 0.91],   # node 1 (source)
+        #[0.80, 0.13],   # node 2 (target)
+        #[0.33, 0.59],   # node 3 (target)
+        #[0.95, 0.22],   # node 4 (target)
+        #])        
+    nodes = torch.rand(cfg.num_nodes, 2) 
+    print(f"Node coordinates:\n{nodes}")
+    
+    current = random.randrange(cfg.num_nodes)    
+    
+    env = TSPEnv(cfg, nodes, current)
     agent = REINFORCEAgent(cfg)
 
     # Training Loop
@@ -36,12 +51,12 @@ def train():
     pbar = tqdm(range(cfg.episodes))
     for episode in pbar:
         state, _ = env.reset()
-        terminated = False
+        done = False
         episode_reward = 0.0
         
-        while not terminated:
+        while not done:
             action = agent.act(state)
-            state, reward, terminated, _, _ = env.step(action)
+            state, reward, done, _, _ = env.step(action)
             agent.store_reward(reward)
             episode_reward += reward.item()
             
@@ -51,7 +66,8 @@ def train():
         if episode % 50 == 0:
             print(
                 f"Episode {episode:4d} | "
-                f"Total reward: {episode_reward:.3f}"
+                f"Total reward: {episode_reward:.3f}| "
+                f"Loss: {loss:.4f}"
             )
 
         # Logging to W&B
