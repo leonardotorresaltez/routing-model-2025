@@ -111,8 +111,8 @@ class MDVRPREINFORCEAgent:
             truck_route = []
             current_node = truck.depot_idx # each truck starts at its own depot
             
-            # Allow each truck to visit a balanced share of customers
-            max_p_truck = (len(self.data["customers"]) // len(self.data["trucks"])) + 50
+            # Allow each truck to visit a balanced share of customers, TOCOMMENT
+            max_p_truck = (len(self.data["customers"]) // len(self.data["trucks"])) + 20
             
             for _ in range(max_p_truck):
                 # # 2. Combine with the global "visited" mask
@@ -122,13 +122,13 @@ class MDVRPREINFORCEAgent:
                     
                 # 3. Pass to policy
                 # probs = self.policy(node_features, current_node, combined_mask)
-                probs = self.policy(node_features, current_node, visited_mask)
-                if probs.sum() == 0: break
+                probs = self.policy(node_features, current_node, visited_mask) # It looks at all nodes and calculates a "preference" score for each node based on the truck's
+                if probs.sum() == 0: break # If all nodes have been visited or masked out, the sum of probabilities will be zero (or close to it). In this case, there are no valid moves left, so the truck's routing process stops.
                     
-                dist = torch.distributions.Categorical(probs)
-                action = dist.sample()
+                dist = torch.distributions.Categorical(probs) # This takes the list of "preferences" and puts them available
+                action = dist.sample() # One of the prefered is randomly choosen. If we always picked the #1 choice (the biggest slice), it would never try anything new
                 
-                total_log_prob += dist.log_prob(action)
+                total_log_prob += dist.log_prob(action) # calculates the logarithm of the probability of the choice just made, and sums the logs of all decisions made across the whole day - ONESHOTAPPROACH
                 next_node = action.item()
                 truck_route.append(next_node)
                 visited_mask = visited_mask.clone()

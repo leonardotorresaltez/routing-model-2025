@@ -63,7 +63,7 @@ class MDVRPEnv(gym.Env):
     
     
     single-step reward calculation based on the total travel time of all 50 trucks.    
-    Single-Step Journey: It calculates all 50 routes at once and returns terminated=True.
+    Single-Step Journey: It calculates all 50 routes at once (on a for loop) and returns terminated=True.
     Multi-Depot Return: Each truck returns to its specific depot_idx.
     """
     def __init__(self, cfg, data):
@@ -97,6 +97,7 @@ class MDVRPEnv(gym.Env):
         total_time = 0.0
         visited_customers = set()
         
+        # ONESHOT: one step is an entire truck loop
         for truck in self.trucks:
             route = action.get(truck.id, [])
             if not route:
@@ -122,7 +123,8 @@ class MDVRPEnv(gym.Env):
         missing = len(self.customers) - len(visited_customers)
         reward -= missing * 50.0 # High penalty to ensure coverage
         
-        # One-shot: always returns terminated=True
+        # ONESHOT: always returns terminated=True
+        # ONESHOT: The agent provides the whole day's plan, the environment calculates the whole day's reward, and the episode ends.
         return self._get_obs(), reward, True, False, {"total_time": total_time}
 
     def _get_obs(self): 

@@ -1,6 +1,7 @@
 import glob
 import os
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Dict, List, Tuple
 
 import numpy as np
@@ -39,8 +40,12 @@ class Depot:
     truck_fleet: List[int] = field(default_factory=list)
 
 class MDVRPDataLoader:
-    def __init__(self, data_dir=r"c:\Users\clara.gregori\projects\VisualStudioCode\routing-model-2025\data\data_version_2"):
-        self.data_dir = data_dir
+    def __init__(self, data_dir=None):
+        if data_dir is None:
+            # Pointing to the project root/data/data_version_2
+            self.data_dir = Path(__file__).resolve().parent.parent.parent / "data" / "data_version_2"
+        else:
+            self.data_dir = Path("data/" + data_dir)
         self.node_to_idx = {}
         self.idx_to_node = {}
 
@@ -94,6 +99,9 @@ class MDVRPDataLoader:
         # Normalize features by max time for neural network stability
         node_features = time_tensor / (time_tensor.max() + 1e-9)
 
+        # print(time_matrix)
+        # print(time_tensor)
+        # print(node_features)
         return {
             "node_features": node_features,
             "time_matrix": time_tensor,

@@ -23,7 +23,7 @@ def train():
     os.makedirs("checkpoints", exist_ok=True)
     
     # Load Real Data
-    loader = MDVRPDataLoader()
+    loader = MDVRPDataLoader(data_dir=cfg.data_dir)
     data = loader.load_data()
 
     if cfg.wandb:
@@ -39,6 +39,7 @@ def train():
         state, _ = env.reset()
         
         # One-shot action
+        # print('state ', state)
         action = agent.act(state)
         state, reward, _, _, info = env.step(action)
         
@@ -46,6 +47,12 @@ def train():
         batch_rewards.append(reward) # Track rewards for this batch
     
         if (episode + 1) % 10 == 0:
+            
+            for truck_id, route in action.items():
+                if route: # Only print trucks that actually moved
+                    print(f"Truck {truck_id}: {route}")
+            
+            
             loss = agent.update()
             avg_reward = sum(batch_rewards) / len(batch_rewards)
             pbar.write(
