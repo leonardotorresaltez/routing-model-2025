@@ -11,13 +11,17 @@ class Config:
     device: str = "cpu"
     wandb: bool = True  # Toggle W&B logging
     data_dir: str = "data_version_2"  # data path
+    if data_dir == "data_version_2":
+        max_daily_delivery_time_each_truck: int = 24 # hours
+    else:
+        max_daily_delivery_time_each_truck: int = 1000 # hours
     
     # --- Model ---
     embed_dim: int = 128
     
     # --- Training ---
     lr: float = 1e-3
-    episodes: int = 50 # 500
+    episodes: int = 200 # 500
     log_interval: int = 20
 
 def parse_args() -> Config:
@@ -31,6 +35,7 @@ def parse_args() -> Config:
     parser.add_argument("--seed", type=int, default=base_cfg.seed)
     parser.add_argument("--device", type=str, default=base_cfg.device)
     parser.add_argument("--data_dir", type=str, default=base_cfg.data_dir)
+    parser.add_argument("--max_daily_delivery_time_for_each_truck", type=int, default=base_cfg.max_daily_delivery_time_each_truck)
 
     
     # Flag: --no-wandb to disable logging

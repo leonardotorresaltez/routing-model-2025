@@ -42,15 +42,16 @@ def train():
         # print('state ', state)
         action = agent.act(state)
         state, reward, _, _, info = env.step(action)
+        total_visited = sum(len(route) for route in action.values())
         
         agent.store_reward(reward)
         batch_rewards.append(reward) # Track rewards for this batch
     
         if (episode + 1) % 10 == 0:
             
-            for truck_id, route in action.items():
-                if route: # Only print trucks that actually moved
-                    print(f"Truck {truck_id}: {route}")
+            # for truck_id, route in action.items():
+            #     if route: # Only print trucks that actually moved
+            #         print(f"Truck {truck_id}: {route}")
             
             
             loss = agent.update()
@@ -58,6 +59,7 @@ def train():
             pbar.write(
                     f"Episode {episode+1:>4} | "
                     f"Avg Reward: {avg_reward:.3f} | "
+                    f"Visited: {total_visited:.2f} | "
                     f"Loss: {loss:.4f} | "
                     f"Time: {info['total_time']:.2f}h"
                 )
@@ -66,6 +68,7 @@ def train():
                 wandb.log({
                     "episode ":episode,
                     "batch_avg_reward ": avg_reward, 
+                    "visited ": total_visited, 
                     "loss ": loss, 
                     "total_time ": info["total_time"]
                 })

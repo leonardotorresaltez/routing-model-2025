@@ -105,31 +105,35 @@ class MDVRPREINFORCEAgent:
         
         # Build routes sequentially for each truck
         for truck in self.data["trucks"]:
-            # # 1. Get nodes this specific truck is FORBIDDEN from visiting
-            # # (e.g., from a pre-defined constraint table)
-            # truck_forbidden_mask = self.data["constraints"][truck.id] 
+
             truck_route = []
+            truck_time = 0.0 # Track current time for this truck
             current_node = truck.depot_idx # each truck starts at its own depot
             
-            # Allow each truck to visit a balanced share of customers, TOCOMMENT
-            max_p_truck = (len(self.data["customers"]) // len(self.data["trucks"])) + 20
-            
-            for _ in range(max_p_truck):
-                # # 2. Combine with the global "visited" mask
-                # # The edge effectively "disappears" because we force the probability to 0
-                # combined_mask = visited_mask | truck_forbidden_mask
-                if visited_mask.all(): break
-                    
-                # 3. Pass to policy
-                # probs = self.policy(node_features, current_node, combined_mask)
-                probs = self.policy(node_features, current_node, visited_mask) # It looks at all nodes and calculates a "preference" score for each node based on the truck's
-                if probs.sum() == 0: break # If all nodes have been visited or masked out, the sum of probabilities will be zero (or close to it). In this case, there are no valid moves left, so the truck's routing process stops.
-                    
+            while True:
+                if visited_mask.all(): break # All customers done, stop this truck
+                
+                # refered to max_daily_delivery_time_each_truck
+                current_truck_mask = visited_mask.clone()               
+
+                for i in range(num_nodes):
+                    if not current_truck_mask[i]: # If not already visited
+                        # Time to reach customer 'i' + time to return to depot from 'i'
+                        time_to_i = self.data["time_matrix"][current_node, i].item()
+                        time_home = self.data["time_matrix"][i, truck.depot_idx].item()
+                        
+                        if truck_time + time_to_i + time_home > self.cfg.max_daily_delivery_time_each_truck: # it makes sure that it goes back home
+                            current_truck_mask[i] = True # Mask this node for this truck since the solution is over the time allowed
+                
+                if current_truck_mask.all(): break # This truck is "done" because no customers are reachable/unvisited
+               
+                probs = self.policy(node_features, current_node, current_truck_mask) # It looks at all nodes and calculates a "preference" score for each node based on the truck's
                 dist = torch.distributions.Categorical(probs) # This takes the list of "preferences" and puts them available
                 action = dist.sample() # One of the prefered is randomly choosen. If we always picked the #1 choice (the biggest slice), it would never try anything new
-                
-                total_log_prob += dist.log_prob(action) # calculates the logarithm of the probability of the choice just made, and sums the logs of all decisions made across the whole day - ONESHOTAPPROACH
+                total_log_prob += dist.log_prob(action) # It calculates the logarithm of the probability of the choice just made, and sums the logs of all decisions made across the whole day - ONESHOTAPPROACH
                 next_node = action.item()
+                truck_time += self.data["time_matrix"][current_node, next_node].item()
+
                 truck_route.append(next_node)
                 visited_mask = visited_mask.clone()
                 visited_mask[next_node] = True
