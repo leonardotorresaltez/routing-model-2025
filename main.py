@@ -17,15 +17,16 @@ def set_seed(seed):
 def train():
     cfg = parse_args()
     set_seed(cfg.seed)
-    os.makedirs("checkpoints", exist_ok=True)
+    
+    #os.makedirs("checkpoints", exist_ok=True)
     
     # --- W&B Init ---
-    if cfg.wandb:
-        wandb.init(
-            project=cfg.project_name, 
-            name=cfg.run_name, 
-            config=vars(cfg)
-        )
+#    if cfg.wandb:
+#        wandb.init(
+#            project=cfg.project_name, 
+#            name=cfg.run_name, 
+#            config=vars(cfg)
+#        )
 
     print(f"--> STARTING RUN: {cfg.run_name}")
     
@@ -62,7 +63,7 @@ def train():
         
         while not terminated:
             action = agent.act(state)
-            state, reward, terminated = env.step(action)
+            state, reward, terminated, _ ,_ = env.step(action)
             agent.store_reward(reward)
             episode_reward += reward.item()
             
@@ -72,26 +73,27 @@ def train():
         if episode % 50 == 0:
             print(
                 f"Episode {episode:4d} | "
-                f"Total reward: {episode_reward:.3f}"
+                f"Total reward: {episode_reward:.3f}| "
+                f"Loss: {loss:.4f}"
             )
 
         # Logging to W&B
-        if cfg.wandb:
-            wandb.log({
-                "reward": episode_reward,
-                "loss": loss,
-                "episode": episode
-            })
+#        if cfg.wandb:
+#            wandb.log({
+#                "reward": episode_reward,
+#                "loss": loss,
+#                "episode": episode
+#            })
             
         pbar.set_description(f"Rw: {episode_reward:.2f}")
 
     # Save
-    path = f"checkpoints/{cfg.run_name}.pt"
-    torch.save(agent.policy.state_dict(), path)
-    print(f"--> SAVED: {path}")
+    #path = f"checkpoints/{cfg.run_name}.pt"
+    #torch.save(agent.policy.state_dict(), path)
+    #print(f"--> SAVED: {path}")
     
-    if cfg.wandb:
-        wandb.finish()
+#    if cfg.wandb:
+#        wandb.finish()
 
 if __name__ == "__main__":
     train()

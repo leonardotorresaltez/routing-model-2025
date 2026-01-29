@@ -24,10 +24,38 @@ class TSPEnv(gym.Env):
         self.num_nodes = cfg.num_sources + cfg.num_targets
         self.nodes = nodes
         self.current = current  # list of current positions for each truck
+        
+        # ---------- Observation space ----------
+        self.observation_space = spaces.Dict({
+            # Node coordinates
+            "nodes": spaces.Box(
+                low=0.0, high=1.0, shape=(self.num_nodes, 2), dtype=np.float32
+            ),
+            # Which nodes are targets
+            "is_target": spaces.Box(
+                low=0, high=1, shape=(self.num_nodes,), dtype=np.int8
+            ),
+            # Visited targets (GLOBAL)
+            "visited_targets": spaces.Box(
+                low=0, high=1, shape=(self.num_nodes,), dtype=np.int8
+            ),
+            # Current position of each truck
+            "current": spaces.MultiDiscrete([self.num_nodes] * self.num_trucks)
+        })
 
-    def reset(self):
+        # ---------- Action space ----------
+        # One action per truck
+        self.action_space = spaces.MultiDiscrete(
+            [self.num_nodes] * self.num_trucks
+        )
 
+        self.reset()        
 
+    def reset(self, seed=None, options=None):
+
+        super().reset(seed=seed)
+        
+        
         # Labels
         #example tensor([False, False, False, False, False])
         self.is_source = torch.zeros(self.num_nodes, dtype=torch.bool)
@@ -53,14 +81,14 @@ class TSPEnv(gym.Env):
         self.visited_targets[self.is_source] = True  # sources are irrelevant
         
         
-        return self._get_state(), {}
+        return self._get_obs(), {}
 
-    def _get_state(self):
-        return {
-            "nodes": self.nodes,
-            "current": self.current,              # list[int]
-            "visited_targets": self.visited_targets.clone(),
-            "is_target": self.is_target.clone()
+    def _get_obs(self):
+        return  {
+            "nodes": self.nodes.clone(),
+            "is_target": self.is_target.clone().int(),
+            "visited_targets": self.visited_targets.clone().int(),
+            "current": np.array(self.current, dtype=np.int64)
         }
 
     def step(self, actions):
@@ -74,10 +102,10 @@ class TSPEnv(gym.Env):
             self.visited_targets[action] = True
 
             dist = torch.norm(self.nodes[prev] - self.nodes[action])
-            reward -= dist
+            reward -=  10.0 * dist  # Negative reward = distance cost
 
         done = self.visited_targets[self.is_target].all()
-        return self._get_state(), reward, done
+        return self._get_obs(), reward, done, False, {}
     
     
     

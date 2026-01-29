@@ -86,25 +86,29 @@ class REINFORCEFleetAgent:
 
     def act(self, state):
         nodes = state["nodes"].to(self.cfg.device)
-        visited_targets = state["visited_targets"].to(self.cfg.device)
+        visited_targets = state["visited_targets"].bool().to(self.cfg.device)
         is_target = state["is_target"].to(self.cfg.device)
+        currents = state["current"]   
 
         actions = []
         step_log_probs = []
 
-        mask = visited_targets | ~is_target
+        invalid_mask = (~is_target) | visited_targets
 
-        for k in range(self.cfg.num_trucks):
-            current = state["current"][k]
+        for current in currents:
+            probs = self.policy(
+                nodes,
+                int(current),
+                invalid_mask
+            )
 
-            probs = self.policy(nodes, current, mask)
             dist = torch.distributions.Categorical(probs)
             action = dist.sample()
 
+            self.log_probs.append(dist.log_prob(action))
             actions.append(action.item())
-            step_log_probs.append(dist.log_prob(action))
 
-        self.log_probs.append(torch.stack(step_log_probs).sum())
+
         return actions
 
     def store_reward(self, reward):
@@ -119,14 +123,22 @@ class REINFORCEFleetAgent:
             returns.insert(0, R)
 
         returns = torch.tensor(returns).to(self.cfg.device)
-        returns = (returns - returns.mean()) / (returns.std() + 1e-9)
+        
+        
+        #  Policy loss
+        loss = 0.0
+        for log_prob, R in zip(self.log_probs, returns):
+            loss += -log_prob * R
 
-        loss = sum(-lp * R for lp, R in zip(self.log_probs, returns))
+        loss = loss / len(self.log_probs)
 
+        # Backprop
         self.optimizer.zero_grad()
         loss.backward()
         self.optimizer.step()
 
+        # Clear buffers
         self.log_probs.clear()
         self.rewards.clear()
+
         return loss.item()
