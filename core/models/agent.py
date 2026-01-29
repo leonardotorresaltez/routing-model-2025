@@ -152,6 +152,7 @@ class MDVRPREINFORCEAgent:
         # Standardize rewards for stable gradients
         R = (R - R.mean()) / (R.std() + 1e-9)
         
+        # REINFORCE: we need to update the policy weights by the gradient of the log-probability of the actions, scaled by the reward. 
         loss = -(torch.stack(self.log_probs) * R).sum()
         
         self.optimizer.zero_grad()

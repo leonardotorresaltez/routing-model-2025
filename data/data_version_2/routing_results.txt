@@ -1,0 +1,203 @@
+=== FINAL ROUTING REPORT (data_version_2) ===
+Total Combined Time of all Trucks: 148.86 hours
+
+--- TRUCK 1 ---
+F1 (Visited at: 0.00h) -> F1 (Back at: 0.00h)
+Total Route Time: 0.00 hours
+
+--- TRUCK 2 ---
+F1 (Visited at: 0.00h) -> F1 (Back at: 0.00h)
+Total Route Time: 0.00 hours
+
+--- TRUCK 3 ---
+F1 (Visited at: 0.00h) -> F1 (Back at: 0.00h)
+Total Route Time: 0.00 hours
+
+--- TRUCK 4 ---
+F1 (Visited at: 0.00h) -> F1 (Back at: 0.00h)
+Total Route Time: 0.00 hours
+
+--- TRUCK 5 ---
+F1 (Visited at: 0.00h) -> F1 (Back at: 0.00h)
+Total Route Time: 0.00 hours
+
+--- TRUCK 6 ---
+F1 (Visited at: 0.00h) -> F1 (Back at: 0.00h)
+Total Route Time: 0.00 hours
+
+--- TRUCK 7 ---
+F1 (Visited at: 0.00h) -> F1 (Back at: 0.00h)
+Total Route Time: 0.00 hours
+
+--- TRUCK 8 ---
+F1 (Visited at: 0.00h) -> F1 (Back at: 0.00h)
+Total Route Time: 0.00 hours
+
+--- TRUCK 9 ---
+F1 (Visited at: 0.00h) -> F1 (Back at: 0.00h)
+Total Route Time: 0.00 hours
+
+--- TRUCK 10 ---
+F1 (Visited at: 0.00h) -> F1 (Back at: 0.00h)
+Total Route Time: 0.00 hours
+
+--- TRUCK 11 ---
+F1 (Visited at: 0.00h) -> F1 (Back at: 0.00h)
+Total Route Time: 0.00 hours
+
+--- TRUCK 12 ---
+F1 (Visited at: 0.00h) -> F1 (Back at: 0.00h)
+Total Route Time: 0.00 hours
+
+--- TRUCK 13 ---
+F1 (Visited at: 0.00h) -> F1 (Back at: 0.00h)
+Total Route Time: 0.00 hours
+
+--- TRUCK 14 ---
+F1 (Visited at: 0.00h) -> F1 (Back at: 0.00h)
+Total Route Time: 0.00 hours
+
+--- TRUCK 15 ---
+F1 (Visited at: 0.00h) -> F1 (Back at: 0.00h)
+Total Route Time: 0.00 hours
+
+--- TRUCK 16 ---
+F1 (Visited at: 0.00h) -> F1 (Back at: 0.00h)
+Total Route Time: 0.00 hours
+
+--- TRUCK 17 ---
+F1 (Visited at: 0.00h) -> F1 (Back at: 0.00h)
+Total Route Time: 0.00 hours
+
+--- TRUCK 18 ---
+F1 (Visited at: 0.00h) -> F1 (Back at: 0.00h)
+Total Route Time: 0.00 hours
+
+--- TRUCK 19 ---
+F1 (Visited at: 0.00h) -> F1 (Back at: 0.00h)
+Total Route Time: 0.00 hours
+
+--- TRUCK 20 ---
+F1 (Visited at: 0.00h) -> F1 (Back at: 0.00h)
+Total Route Time: 0.00 hours
+
+--- TRUCK 21 ---
+F1 (Visited at: 0.00h) -> F1 (Back at: 0.00h)
+Total Route Time: 0.00 hours
+
+--- TRUCK 22 ---
+F1 (Visited at: 0.00h) -> F1 (Back at: 0.00h)
+Total Route Time: 0.00 hours
+
+--- TRUCK 23 ---
+F1 (Visited at: 0.00h) -> F1 (Back at: 0.00h)
+Total Route Time: 0.00 hours
+
+--- TRUCK 24 ---
+F1 (Visited at: 0.00h) -> F1 (Back at: 0.00h)
+Total Route Time: 0.00 hours
+
+--- TRUCK 25 ---
+F1 (Visited at: 0.00h) -> F1 (Back at: 0.00h)
+Total Route Time: 0.00 hours
+
+--- TRUCK 26 ---
+F1 (Visited at: 0.00h) -> F1 (Back at: 0.00h)
+Total Route Time: 0.00 hours
+
+--- TRUCK 27 ---
+F1 (Visited at: 0.00h) -> F1 (Back at: 0.00h)
+Total Route Time: 0.00 hours
+
+--- TRUCK 28 ---
+F1 (Visited at: 0.00h) -> F1 (Back at: 0.00h)
+Total Route Time: 0.00 hours
+
+--- TRUCK 29 ---
+F1 (Visited at: 0.00h) -> F1 (Back at: 0.00h)
+Total Route Time: 0.00 hours
+
+--- TRUCK 30 ---
+F1 (Visited at: 0.00h) -> F1 (Back at: 0.00h)
+Total Route Time: 0.00 hours
+
+--- TRUCK 31 ---
+F1 (Visited at: 0.00h) -> F1 (Back at: 0.00h)
+Total Route Time: 0.00 hours
+
+--- TRUCK 32 ---
+F1 (Visited at: 0.00h) -> F1 (Back at: 0.00h)
+Total Route Time: 0.00 hours
+
+--- TRUCK 33 ---
+F1 (Visited at: 0.00h) -> F1 (Back at: 0.00h)
+Total Route Time: 0.00 hours
+
+--- TRUCK 34 ---
+F1 (Visited at: 0.00h) -> F1 (Back at: 0.00h)
+Total Route Time: 0.00 hours
+
+--- TRUCK 35 ---
+F1 (Visited at: 0.00h) -> F1 (Back at: 0.00h)
+Total Route Time: 0.00 hours
+
+--- TRUCK 36 ---
+F1 (Visited at: 0.00h) -> F1 (Back at: 0.00h)
+Total Route Time: 0.00 hours
+
+--- TRUCK 37 ---
+F1 (Visited at: 0.00h) -> F1 (Back at: 0.00h)
+Total Route Time: 0.00 hours
+
+--- TRUCK 38 ---
+F1 (Visited at: 0.00h) -> F1 (Back at: 0.00h)
+Total Route Time: 0.00 hours
+
+--- TRUCK 39 ---
+F1 (Visited at: 0.00h) -> F1 (Back at: 0.00h)
+Total Route Time: 0.00 hours
+
+--- TRUCK 40 ---
+F1 (Visited at: 0.00h) -> F1 (Back at: 0.00h)
+Total Route Time: 0.00 hours
+
+--- TRUCK 41 ---
+F1 (Visited at: 0.00h) -> F1 (Back at: 0.00h)
+Total Route Time: 0.00 hours
+
+--- TRUCK 42 ---
+F1 (Visited at: 0.00h) -> F1 (Back at: 0.00h)
+Total Route Time: 0.00 hours
+
+--- TRUCK 43 ---
+F1 (Visited at: 0.00h) -> F1 (Back at: 0.00h)
+Total Route Time: 0.00 hours
+
+--- TRUCK 44 ---
+F1 (Visited at: 0.00h) -> F1 (Back at: 0.00h)
+Total Route Time: 0.00 hours
+
+--- TRUCK 45 ---
+F1 (Visited at: 0.00h) -> F1 (Back at: 0.00h)
+Total Route Time: 0.00 hours
+
+--- TRUCK 46 ---
+F1 (Visited at: 0.00h) -> F1 (Back at: 0.00h)
+Total Route Time: 0.00 hours
+
+--- TRUCK 47 ---
+F1 (Visited at: 0.00h) -> F1 (Back at: 0.00h)
+Total Route Time: 0.00 hours
+
+--- TRUCK 48 ---
+F1 (Visited at: 0.00h) -> F1 (Back at: 0.00h)
+Total Route Time: 0.00 hours
+
+--- TRUCK 49 ---
+F1 (Visited at: 0.00h) -> 9bee228a75 (Visited at: 0.25h) -> e84521cbfb (Visited at: 0.41h) -> a6fd751fe9 (Visited at: 0.58h) -> ba744e4ccd (Visited at: 0.66h) -> abce769cab (Visited at: 0.77h) -> 8884d89e82 (Visited at: 0.87h) -> b4760eab05 (Visited at: 0.93h) -> 3d907cf790 (Visited at: 0.96h) -> cab4ef8e0d (Visited at: 1.03h) -> 74c123185f (Visited at: 1.12h) -> 56454e0225 (Visited at: 1.17h) -> c3b7566245 (Visited at: 1.22h) -> 50eba3b5e2 (Visited at: 1.37h) -> 8a766e4a89 (Visited at: 1.44h) -> 3fb6e50423 (Visited at: 1.48h) -> a3a9e10564 (Visited at: 1.55h) -> 0fdecd5432 (Visited at: 1.59h) -> f0f7b6fb13 (Visited at: 1.63h) -> b0ab1673fb (Visited at: 1.77h) -> bab5bfe703 (Visited at: 1.89h) -> 60aefb3512 (Visited at: 1.93h) -> 5960156fbf (Visited at: 2.06h) -> 7271b295ca (Visited at: 2.29h) -> ee0434766a (Visited at: 2.33h) -> 4ceff4c75a (Visited at: 2.42h) -> 6c836a9595 (Visited at: 2.46h) -> f1c40e18c2 (Visited at: 2.74h) -> c9eed4dd25 (Visited at: 2.95h) -> e79898ae7c (Visited at: 3.12h) -> 3dff8239ef (Visited at: 3.32h) -> 1d2f5b1f88 (Visited at: 3.61h) -> 25b22eeeea (Visited at: 3.85h) -> 76e5171576 (Visited at: 4.18h) -> a688826f6c (Visited at: 4.48h) -> 31b5d750e6 (Visited at: 4.73h) -> 0958251aaf (Visited at: 4.86h) -> 9f3155a07f (Visited at: 4.89h) -> 1aed189151 (Visited at: 4.95h) -> 2fac0b2d02 (Visited at: 5.01h) -> ec6ddaf216 (Visited at: 5.08h) -> 783edd415d (Visited at: 5.14h) -> 14e455cf83 (Visited at: 5.19h) -> 41621d9d59 (Visited at: 5.25h) -> 166438f590 (Visited at: 5.34h) -> 79fa107203 (Visited at: 5.51h) -> a6c2fe526b (Visited at: 5.52h) -> 1dfb6be4dc (Visited at: 5.65h) -> f4e70c8e0a (Visited at: 5.92h) -> 1ea179db6e (Visited at: 5.95h) -> e1da0b42ae (Visited at: 5.99h) -> 74e1ed67d0 (Visited at: 6.07h) -> 552c58a676 (Visited at: 6.24h) -> f9e96216c5 (Visited at: 6.50h) -> 4e7524f094 (Visited at: 6.67h) -> 86907304fb (Visited at: 6.74h) -> e69f0b8fe6 (Visited at: 6.86h) -> 377c00d6b7 (Visited at: 6.96h) -> 9658cb58c7 (Visited at: 7.01h) -> 7fdb7f4529 (Visited at: 7.02h) -> ca6be55f56 (Visited at: 7.17h) -> 0dce71648d (Visited at: 7.41h) -> 2699df5b3e (Visited at: 7.44h) -> 7b0b944330 (Visited at: 7.49h) -> 28ee3b7fe9 (Visited at: 7.62h) -> 27b24c9df5 (Visited at: 7.87h) -> 0e9a33426b (Visited at: 8.14h) -> ce00146abe (Visited at: 8.32h) -> 7f25585156 (Visited at: 8.48h) -> 7761b2e297 (Visited at: 8.52h) -> 918139003b (Visited at: 8.75h) -> 27fb7349ab (Visited at: 8.99h) -> 80970b9691 (Visited at: 9.29h) -> 76fe43c036 (Visited at: 9.58h) -> d7a7f5f186 (Visited at: 9.83h) -> 7bf43bceb8 (Visited at: 10.18h) -> 981322437b (Visited at: 10.50h) -> c83d9fa7a3 (Visited at: 10.72h) -> 0efb9deb16 (Visited at: 10.94h) -> 8028f70397 (Visited at: 11.48h) -> 12b0b1a628 (Visited at: 11.64h) -> 9f5acb8ed6 (Visited at: 11.75h) -> a1ad34adf8 (Visited at: 12.04h) -> 95e6949dee (Visited at: 12.27h) -> cfdd95192d (Visited at: 12.48h) -> e62c5064c7 (Visited at: 13.15h) -> e88a15fc13 (Visited at: 13.22h) -> e5592a2a36 (Visited at: 13.38h) -> c98ff95121 (Visited at: 13.68h) -> ba003048e8 (Visited at: 14.07h) -> a43a3dfe6b (Visited at: 14.43h) -> 607739c05d (Visited at: 14.95h) -> a65fbc4ab8 (Visited at: 16.15h) -> 281490894e (Visited at: 16.52h) -> d617085ab1 (Visited at: 17.34h) -> 5aee113a8c (Visited at: 17.78h) -> 77f42b31ae (Visited at: 19.44h) -> e86d450d76 (Visited at: 19.79h) -> cdb82c173e (Visited at: 21.04h) -> 3ec1090115 (Visited at: 21.45h) -> 603762453b (Visited at: 22.98h) -> 9973b32e92 (Visited at: 23.55h) -> 36bedd0ef0 (Visited at: 24.84h) -> 0ccff6ab6f (Visited at: 26.74h) -> d6877b4e79 (Visited at: 27.89h) -> 4f29488858 (Visited at: 28.29h) -> ff39ac6cd5 (Visited at: 28.53h) -> 0d7cd9c417 (Visited at: 29.15h) -> f51d5b83de (Visited at: 30.04h) -> b335c7258a (Visited at: 30.18h) -> 49a6fe0fc7 (Visited at: 30.73h) -> 1c365b01df (Visited at: 31.24h) -> d7f1b6856c (Visited at: 31.38h) -> 6a74eaf5ca (Visited at: 31.74h) -> 5d59ca0ecf (Visited at: 31.83h) -> 8306cc8e30 (Visited at: 32.29h) -> ddb5fdc991 (Visited at: 32.67h) -> 13ffc02990 (Visited at: 33.07h) -> 60c6c43768 (Visited at: 33.52h) -> b9aad8372d (Visited at: 33.83h) -> c07d769be6 (Visited at: 33.91h) -> d4de0e6101 (Visited at: 34.02h) -> 554486b5c7 (Visited at: 34.16h) -> e55c73b893 (Visited at: 34.30h) -> 047f8c52a2 (Visited at: 34.47h) -> c0312bdd42 (Visited at: 34.55h) -> 9b9a98b06a (Visited at: 34.72h) -> 69dfc2f4c6 (Visited at: 34.83h) -> c13abb456b (Visited at: 34.89h) -> 514ae0f038 (Visited at: 34.98h) -> c6ff092785 (Visited at: 35.07h) -> 5d01947735 (Visited at: 35.24h) -> 37fd2072f0 (Visited at: 35.36h) -> 846cf2e480 (Visited at: 35.52h) -> 2ea95b3ab6 (Visited at: 35.71h) -> d0a298c1ca (Visited at: 36.00h) -> f2684ab93d (Visited at: 36.11h) -> d7c287434c (Visited at: 36.23h) -> afe5548b00 (Visited at: 36.39h) -> 01bb856af9 (Visited at: 36.47h) -> 0006ef2978 (Visited at: 36.53h) -> abceefbff0 (Visited at: 36.70h) -> 96938eb81c (Visited at: 36.77h) -> 51a2befb22 (Visited at: 36.93h) -> 7f15f38d75 (Visited at: 37.00h) -> e0c197ebc9 (Visited at: 37.12h) -> c6f610746c (Visited at: 37.21h) -> 89890345fa (Visited at: 37.29h) -> dda26e4012 (Visited at: 37.42h) -> 951362d212 (Visited at: 37.47h) -> 61a782fe9e (Visited at: 37.65h) -> d475ee14e1 (Visited at: 38.02h) -> d1e8b9cca1 (Visited at: 38.28h) -> 323857f277 (Visited at: 38.62h) -> 94b449dab2 (Visited at: 38.76h) -> 153ab08b80 (Visited at: 38.81h) -> be72307682 (Visited at: 39.01h) -> eb5f666107 (Visited at: 39.12h) -> 0fad3930c1 (Visited at: 39.40h) -> 7cfc41c25c (Visited at: 40.01h) -> 09f0065325 (Visited at: 40.20h) -> a414d2ed32 (Visited at: 40.30h) -> 74ec9bcd39 (Visited at: 40.38h) -> 6b934f26b5 (Visited at: 40.54h) -> e41909fd82 (Visited at: 40.63h) -> 14b51e7837 (Visited at: 40.79h) -> 5c2c1184ee (Visited at: 40.89h) -> 19d5d97b5e (Visited at: 40.93h) -> 71d038e16f (Visited at: 41.04h) -> 94a5213013 (Visited at: 41.38h) -> aadd50e099 (Visited at: 41.50h) -> 78e967fa70 (Visited at: 41.71h) -> ab3aa544bb (Visited at: 42.04h) -> 3ed9a74f6e (Visited at: 42.28h) -> 99f5c51525 (Visited at: 42.75h) -> 29f7724804 (Visited at: 43.03h) -> e803327500 (Visited at: 43.36h) -> dd0b23f486 (Visited at: 43.41h) -> c008c057ed (Visited at: 43.53h) -> f4aa0d9f94 (Visited at: 43.69h) -> 5ce079596e (Visited at: 43.80h) -> a43706005a (Visited at: 43.87h) -> 852d8f4ab7 (Visited at: 43.90h) -> 034548982b (Visited at: 44.15h) -> 112cf37aed (Visited at: 44.19h) -> 7c7c461a2c (Visited at: 44.39h) -> 71ded4e192 (Visited at: 44.48h) -> 7ce0c227c6 (Visited at: 44.57h) -> 981f604d5a (Visited at: 44.75h) -> 57a6ee8a8a (Visited at: 44.86h) -> 20a6cc26f1 (Visited at: 45.01h) -> 873ab7f908 (Visited at: 45.17h) -> cb9f3fe19d (Visited at: 45.44h) -> 32c67a9415 (Visited at: 45.55h) -> d0125b298d (Visited at: 45.66h) -> dc68d61efe (Visited at: 45.79h) -> 6871679ae5 (Visited at: 46.13h) -> 1d2fb1dd8d (Visited at: 46.33h) -> 04e3d678cb (Visited at: 46.41h) -> 120774aaee (Visited at: 46.55h) -> 99ea1a2ebf (Visited at: 46.63h) -> 7cf439946f (Visited at: 46.83h) -> 97e5d8fab3 (Visited at: 46.94h) -> cef23ad9ad (Visited at: 47.02h) -> a62e3c0499 (Visited at: 47.21h) -> 598f6b1ff7 (Visited at: 47.35h) -> 4e00c6e936 (Visited at: 47.41h) -> f555606743 (Visited at: 47.56h) -> b690a2ff75 (Visited at: 47.66h) -> 5758fc58f5 (Visited at: 47.76h) -> 41ef9fd543 (Visited at: 47.78h) -> fb710f1693 (Visited at: 47.97h) -> 3821e42e30 (Visited at: 48.05h) -> c10855f02f (Visited at: 48.16h) -> 1abd0377b2 (Visited at: 48.27h) -> 726b472fbc (Visited at: 48.33h) -> 10c1a3432c (Visited at: 48.57h) -> d8e6d4447c (Visited at: 48.68h) -> b82e1d1c74 (Visited at: 48.72h) -> b4c56c69a4 (Visited at: 48.79h) -> 48158b897e (Visited at: 49.08h) -> F4 (Visited at: 49.29h) -> 0eae82d1fa (Visited at: 49.52h) -> e31fdcab4d (Visited at: 49.56h) -> 6131d6163c (Visited at: 49.64h) -> 6d1d824969 (Visited at: 49.77h) -> b239d81b8f (Visited at: 49.87h) -> 68e51f80cb (Visited at: 49.99h) -> ac30530da1 (Visited at: 50.12h) -> 72f37f6d7a (Visited at: 50.15h) -> 8076a8dab7 (Visited at: 50.24h) -> efbcc0b9a0 (Visited at: 50.35h) -> ce95e5b722 (Visited at: 50.37h) -> 2f65bb04c0 (Visited at: 50.46h) -> 005141b844 (Visited at: 50.81h) -> b268eccc2e (Visited at: 50.89h) -> b3cfda26af (Visited at: 50.95h) -> 586fa13d50 (Visited at: 51.06h) -> dfa0e9598c (Visited at: 51.16h) -> 916fe1dc37 (Visited at: 51.25h) -> 2a7f397c3e (Visited at: 51.33h) -> eeffe01f4c (Visited at: 51.42h) -> 04c20f7626 (Visited at: 51.57h) -> 8adf2e9721 (Visited at: 51.76h) -> 790b874881 (Visited at: 51.81h) -> 3e07aceb44 (Visited at: 51.92h) -> d90b3a9685 (Visited at: 51.94h) -> 327f0db648 (Visited at: 52.02h) -> 0350205f0e (Visited at: 52.09h) -> 1b16322034 (Visited at: 52.17h) -> ef85c3715f (Visited at: 52.19h) -> 9a1e55ab98 (Visited at: 52.30h) -> 167d5c6c7b (Visited at: 52.39h) -> c3ecf715c9 (Visited at: 52.49h) -> 517e178776 (Visited at: 52.69h) -> 6c89fb73b6 (Visited at: 52.78h) -> aace534141 (Visited at: 52.82h) -> 8e4c430aea (Visited at: 52.86h) -> 8eac17f437 (Visited at: 53.09h) -> a3b09374ca (Visited at: 53.18h) -> f6041a534f (Visited at: 53.31h) -> 061d60c000 (Visited at: 53.33h) -> 85e11ef04e (Visited at: 53.40h) -> 7ca45a0fda (Visited at: 53.45h) -> d42c8c8ab5 (Visited at: 53.61h) -> 7597b7f172 (Visited at: 53.70h) -> 9f242fa503 (Visited at: 53.79h) -> 81e40ff254 (Visited at: 54.03h) -> 242ba064ff (Visited at: 54.13h) -> bd0d51945d (Visited at: 54.14h) -> 3c96fc947f (Visited at: 54.25h) -> f30f4c040d (Visited at: 54.36h) -> F5 (Visited at: 54.58h) -> 2e6a884ef6 (Visited at: 54.70h) -> 150feca7f8 (Visited at: 54.88h) -> 296bb6692f (Visited at: 54.97h) -> 848e63cb28 (Visited at: 55.04h) -> 240bcf3b86 (Visited at: 55.11h) -> d58d68833e (Visited at: 55.19h) -> 3866f92033 (Visited at: 55.33h) -> 8a629a2faf (Visited at: 55.40h) -> 1efebf584e (Visited at: 55.46h) -> ba22951abf (Visited at: 55.61h) -> 57e0cc21f4 (Visited at: 55.66h) -> 9c397653a2 (Visited at: 55.85h) -> 0fd2045304 (Visited at: 56.12h) -> e3125ea691 (Visited at: 56.22h) -> 8b228eb029 (Visited at: 56.38h) -> ff30a8b597 (Visited at: 56.56h) -> F2 (Visited at: 56.65h) -> c7a41cfefd (Visited at: 56.95h) -> a4b4269028 (Visited at: 57.03h) -> e1efc02da1 (Visited at: 57.19h) -> b1ce30e917 (Visited at: 57.25h) -> d8cc4bb419 (Visited at: 57.29h) -> 63c4c4f3d9 (Visited at: 57.51h) -> 2ead0b9159 (Visited at: 57.54h) -> bd1ede9d08 (Visited at: 57.68h) -> F1 (Back at: 57.87h)
+Total Route Time: 57.87 hours
+
+--- TRUCK 50 ---
+F1 (Visited at: 0.00h) -> c0bf4ab462 (Visited at: 0.16h) -> 842b603099 (Visited at: 0.28h) -> 415553669e (Visited at: 0.59h) -> 66543348f0 (Visited at: 0.84h) -> 2647a93e20 (Visited at: 1.13h) -> F3 (Visited at: 1.27h) -> f89d2d069f (Visited at: 1.41h) -> c2bdcbf1e6 (Visited at: 1.61h) -> e639973562 (Visited at: 1.97h) -> 8b07a83b84 (Visited at: 2.18h) -> 0dde5e2a00 (Visited at: 2.20h) -> b1dbe52773 (Visited at: 2.37h) -> 346f4572dd (Visited at: 2.49h) -> 9427f1d332 (Visited at: 2.63h) -> 6cad90dae0 (Visited at: 2.79h) -> 82e059b83c (Visited at: 2.89h) -> 58b76956a3 (Visited at: 3.07h) -> 53814dfc7e (Visited at: 3.44h) -> 5d31da915a (Visited at: 3.55h) -> a34630deee (Visited at: 3.58h) -> e543fa995c (Visited at: 3.67h) -> 1f6b6dee21 (Visited at: 3.74h) -> 473f1ad813 (Visited at: 3.77h) -> 79b4243bae (Visited at: 3.93h) -> c23d6b7fb2 (Visited at: 4.01h) -> 424487056d (Visited at: 4.07h) -> 53db1497e3 (Visited at: 4.16h) -> ae7b85511d (Visited at: 4.44h) -> 99e076ff71 (Visited at: 4.48h) -> 4b34f55e29 (Visited at: 4.55h) -> fc098eface (Visited at: 4.58h) -> 76842b6054 (Visited at: 4.68h) -> 5d89e7615b (Visited at: 4.91h) -> 1a1043fa41 (Visited at: 5.19h) -> db6c6815b7 (Visited at: 5.41h) -> 5bf6600052 (Visited at: 5.52h) -> 09647a1360 (Visited at: 5.74h) -> b7db3b37ca (Visited at: 5.80h) -> 8a621c9988 (Visited at: 6.01h) -> 299e7a18cb (Visited at: 6.16h) -> 1d0680b872 (Visited at: 6.36h) -> cd1422ca19 (Visited at: 6.47h) -> cfa55ea716 (Visited at: 7.29h) -> a28f8ae066 (Visited at: 7.43h) -> c112656d80 (Visited at: 7.93h) -> f183432985 (Visited at: 8.69h) -> 40c08d1654 (Visited at: 9.02h) -> 34f4a6a202 (Visited at: 9.19h) -> 6d722d410f (Visited at: 9.44h) -> d6867a4566 (Visited at: 9.73h) -> 9bef564262 (Visited at: 9.89h) -> e45a3df72f (Visited at: 10.13h) -> bd0631981a (Visited at: 10.43h) -> 98754995a6 (Visited at: 10.68h) -> d9b1bf95e4 (Visited at: 11.54h) -> d83aee5461 (Visited at: 13.70h) -> 2379cde318 (Visited at: 14.03h) -> b808ed5f1c (Visited at: 15.74h) -> e670a8a9d4 (Visited at: 16.49h) -> 4c6c43cee5 (Visited at: 17.34h) -> 590999acbe (Visited at: 18.33h) -> f516d681ee (Visited at: 19.40h) -> 17cefebfdc (Visited at: 19.97h) -> dee3d2e10f (Visited at: 33.72h) -> 5dd85f8e6a (Visited at: 33.76h) -> d25d82fddd (Visited at: 34.43h) -> 79f8f23f25 (Visited at: 36.91h) -> b6dce97688 (Visited at: 38.17h) -> f938fad741 (Visited at: 41.50h) -> bc511fc112 (Visited at: 42.59h) -> 931ef37a71 (Visited at: 55.61h) -> 7dddc644e9 (Visited at: 56.45h) -> 5f0ac761d4 (Visited at: 57.42h) -> 2fd98aad68 (Visited at: 58.61h) -> c3d82c56d6 (Visited at: 60.60h) -> 6b4c779323 (Visited at: 61.09h) -> fa6eed631b (Visited at: 62.50h) -> 36cc71a6f9 (Visited at: 62.90h) -> f2e3e72afb (Visited at: 63.33h) -> 04b7701eda (Visited at: 64.30h) -> b589ec1523 (Visited at: 67.97h) -> 7a4124b685 (Visited at: 68.72h) -> 1272cc6601 (Visited at: 70.65h) -> c3066f90f7 (Visited at: 71.34h) -> 6cf3b39ac6 (Visited at: 71.51h) -> 78f9d4c5d1 (Visited at: 71.52h) -> 4c7c1078f0 (Visited at: 71.68h) -> 63cb1c2f47 (Visited at: 71.78h) -> 30bb5e9850 (Visited at: 71.84h) -> 9b9d52cdcb (Visited at: 71.99h) -> 0529d01b37 (Visited at: 72.08h) -> 04964861f5 (Visited at: 72.18h) -> 759ab81d90 (Visited at: 72.20h) -> af421d3b60 (Visited at: 72.22h) -> 1afc5769de (Visited at: 72.31h) -> 7af18c173a (Visited at: 72.39h) -> 42ff9f0471 (Visited at: 72.50h) -> acfe01d5e7 (Visited at: 72.51h) -> 3a0c8b81c5 (Visited at: 72.63h) -> 181391ae0c (Visited at: 72.88h) -> 4148bc9518 (Visited at: 72.91h) -> 6402422335 (Visited at: 73.01h) -> 804e0ad062 (Visited at: 73.12h) -> 33e177c42e (Visited at: 73.34h) -> d96a47311f (Visited at: 73.41h) -> 601b3508f9 (Visited at: 73.49h) -> 6d40b3f87c (Visited at: 73.52h) -> 0964b90be1 (Visited at: 73.59h) -> 27a3622b33 (Visited at: 73.79h) -> 49b4f34ea9 (Visited at: 73.92h) -> 50ef13c8f5 (Visited at: 74.11h) -> d51c60c534 (Visited at: 74.32h) -> 21de2c4a13 (Visited at: 74.39h) -> 8a1bb7feec (Visited at: 74.42h) -> 3954004707 (Visited at: 74.64h) -> 62ebfbbb84 (Visited at: 74.81h) -> 32ec0c2ef9 (Visited at: 74.96h) -> b00c419c25 (Visited at: 75.15h) -> 78bfc9430a (Visited at: 75.28h) -> de0c1f40b4 (Visited at: 75.46h) -> ed02bf352c (Visited at: 75.65h) -> c3a2e65986 (Visited at: 75.74h) -> f15c148a6b (Visited at: 76.23h) -> 0ecd8c5a61 (Visited at: 76.26h) -> 6f670a882b (Visited at: 76.31h) -> 9ec4fbb0ad (Visited at: 76.48h) -> c31b25537f (Visited at: 76.55h) -> 95082386e2 (Visited at: 76.72h) -> afff68c60b (Visited at: 76.91h) -> c5460ecc04 (Visited at: 77.09h) -> b2de859bf8 (Visited at: 77.46h) -> 345fd59866 (Visited at: 77.60h) -> 15436d2737 (Visited at: 77.74h) -> aa5ddefc7a (Visited at: 77.99h) -> 726881ca61 (Visited at: 78.14h) -> 23c991379f (Visited at: 78.32h) -> 8b3e9cead9 (Visited at: 78.47h) -> ad71836e91 (Visited at: 78.67h) -> 14cd6c7320 (Visited at: 78.83h) -> 1eea7b8045 (Visited at: 79.09h) -> 3aa0af3549 (Visited at: 79.35h) -> d0be6fa4fa (Visited at: 79.51h) -> 0836588c90 (Visited at: 79.62h) -> 07e6c93a78 (Visited at: 79.65h) -> 8841aea1bd (Visited at: 79.76h) -> 79ada411eb (Visited at: 79.80h) -> 164ad58858 (Visited at: 79.97h) -> b82c94fe67 (Visited at: 80.10h) -> 37e5a68ed5 (Visited at: 80.24h) -> 34ad001b2f (Visited at: 80.36h) -> bf8baa4710 (Visited at: 80.42h) -> fdcd2e50e6 (Visited at: 80.51h) -> dd057e3fc2 (Visited at: 80.74h) -> 587cdeb30c (Visited at: 80.84h) -> 1cebeaa211 (Visited at: 80.94h) -> 72de18fad8 (Visited at: 81.04h) -> edd8009eca (Visited at: 81.12h) -> 5bbf22ae4e (Visited at: 81.30h) -> ddc5773c0f (Visited at: 81.45h) -> baba321218 (Visited at: 81.53h) -> 311ee22564 (Visited at: 81.66h) -> ff99d64e7c (Visited at: 81.88h) -> d0482fc0b2 (Visited at: 81.90h) -> 54f51d573e (Visited at: 82.10h) -> 83a43c612b (Visited at: 82.31h) -> 7426b293df (Visited at: 82.58h) -> cf865bfc31 (Visited at: 82.86h) -> b209ca41a4 (Visited at: 83.13h) -> 18f2991dd2 (Visited at: 83.39h) -> 7131bc15b0 (Visited at: 83.49h) -> e5b7cb9028 (Visited at: 83.62h) -> 380a3c967f (Visited at: 83.75h) -> 879c20b96b (Visited at: 83.92h) -> 53ed3d8aef (Visited at: 84.08h) -> 12384e93b5 (Visited at: 84.28h) -> 5aa18783d9 (Visited at: 84.38h) -> 1f65b1ca05 (Visited at: 84.42h) -> 53b25e1952 (Visited at: 84.63h) -> 7b5076231e (Visited at: 84.71h) -> 8ba4593bde (Visited at: 84.88h) -> 1a8c4eb49e (Visited at: 85.10h) -> 4fc75cc1b8 (Visited at: 85.50h) -> f3ebd287a1 (Visited at: 85.69h) -> 86bae87217 (Visited at: 85.96h) -> 13af5f0b62 (Visited at: 86.03h) -> cfdcacd037 (Visited at: 86.37h) -> 2fac506b51 (Visited at: 86.54h) -> bad0c64c7d (Visited at: 86.73h) -> 6d5a036687 (Visited at: 86.94h) -> b204986e97 (Visited at: 87.23h) -> 72832c5002 (Visited at: 87.28h) -> 85c935495a (Visited at: 87.42h) -> c0b5a157a7 (Visited at: 87.44h) -> 6d413f606b (Visited at: 87.87h) -> 922c6c5ef3 (Visited at: 88.11h) -> afe899e53c (Visited at: 88.34h) -> 449532c12a (Visited at: 88.39h) -> 2564412b8f (Visited at: 88.71h) -> 666040d70a (Visited at: 88.89h) -> 8a2c6d6f4f (Visited at: 89.17h) -> 1ae5e342bc (Visited at: 89.45h) -> 06c8bdd334 (Visited at: 89.65h) -> d172433026 (Visited at: 89.85h) -> 7f694862c1 (Visited at: 90.05h) -> 5f5c0209bb (Visited at: 90.32h) -> 234ac45c54 (Visited at: 90.47h) -> b659e3461b (Visited at: 90.91h) -> F1 (Back at: 90.99h)
+Total Route Time: 90.99 hours
+

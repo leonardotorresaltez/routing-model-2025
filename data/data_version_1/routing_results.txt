@@ -1,0 +1,23 @@
+=== FINAL ROUTING REPORT (data_version_1) ===
+Total Combined Time of all Trucks: 0.00 hours
+
+--- TRUCK 1 ---
+F1 (Visited at: 0.00h) -> 8b07a83b84 (Visited at: 0.00h) -> ff30a8b597 (Visited at: 0.00h) -> fb710f1693 (Visited at: 0.00h) -> a62e3c0499 (Visited at: 0.00h) -> cef23ad9ad (Visited at: 0.00h) -> 120774aaee (Visited at: 0.00h) -> 71ded4e192 (Visited at: 0.00h) -> 19d5d97b5e (Visited at: 0.00h) -> 112cf37aed (Visited at: 0.00h) -> f4aa0d9f94 (Visited at: 0.00h) -> e803327500 (Visited at: 0.00h) -> 04b7701eda (Visited at: 0.00h) -> f938fad741 (Visited at: 0.00h) -> 2379cde318 (Visited at: 0.00h) -> d6877b4e79 (Visited at: 0.00h) -> 327f0db648 (Visited at: 0.00h) -> 9a1e55ab98 (Visited at: 0.00h) -> 1b16322034 (Visited at: 0.00h) -> 8adf2e9721 (Visited at: 0.00h) -> 04c20f7626 (Visited at: 0.00h) -> eeffe01f4c (Visited at: 0.00h) -> 377c00d6b7 (Visited at: 0.00h) -> F1 (Back at: 0.00h)
+Total Route Time: 0.00 hours
+
+--- TRUCK 2 ---
+F1 (Visited at: 0.00h) -> 41621d9d59 (Visited at: 0.00h) -> 552c58a676 (Visited at: 0.00h) -> 2699df5b3e (Visited at: 0.00h) -> c13abb456b (Visited at: 0.00h) -> 9b9a98b06a (Visited at: 0.00h) -> 8028f70397 (Visited at: 0.00h) -> afe5548b00 (Visited at: 0.00h) -> 8076a8dab7 (Visited at: 0.00h) -> 79b4243bae (Visited at: 0.00h) -> 6d40b3f87c (Visited at: 0.00h) -> 09647a1360 (Visited at: 0.00h) -> 30bb5e9850 (Visited at: 0.00h) -> 21de2c4a13 (Visited at: 0.00h) -> d51c60c534 (Visited at: 0.00h) -> afff68c60b (Visited at: 0.00h) -> ddc5773c0f (Visited at: 0.00h) -> 07e6c93a78 (Visited at: 0.00h) -> bf8baa4710 (Visited at: 0.00h) -> fdcd2e50e6 (Visited at: 0.00h) -> 587cdeb30c (Visited at: 0.00h) -> b209ca41a4 (Visited at: 0.00h) -> 1f65b1ca05 (Visited at: 0.00h) -> 72832c5002 (Visited at: 0.00h) -> c0b5a157a7 (Visited at: 0.00h) -> 76e5171576 (Visited at: 0.00h) -> 6c836a9595 (Visited at: 0.00h) -> 7271b295ca (Visited at: 0.00h) -> 3dff8239ef (Visited at: 0.00h) -> F1 (Back at: 0.00h)
+Total Route Time: 0.00 hours
+
+--- TRUCK 3 ---
+F1 (Visited at: 0.00h) -> F1 (Back at: 0.00h)
+Total Route Time: 0.00 hours
+
+--- TRUCK 4 ---
+F1 (Visited at: 0.00h) -> F1 (Back at: 0.00h)
+Total Route Time: 0.00 hours
+
+--- TRUCK 5 ---
+F1 (Visited at: 0.00h) -> F1 (Back at: 0.00h)
+Total Route Time: 0.00 hours
+
