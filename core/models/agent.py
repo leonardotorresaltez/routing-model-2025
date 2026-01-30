@@ -5,9 +5,9 @@ from core.models.policy import AttentionPolicy, GraphPointerPolicy
 
 
 class REINFORCEAgent:
-    def __init__(self, cfg):
+    def __init__(self, cfg, node_dim):
         self.cfg = cfg
-        self.policy = GraphPointerPolicy(embed_dim=cfg.embed_dim)
+        self.policy = GraphPointerPolicy(node_dim=node_dim, embed_dim=cfg.embed_dim)
         self.policy.to(cfg.device)
         self.optimizer = optim.Adam(self.policy.parameters(), lr=cfg.lr)
         

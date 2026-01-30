@@ -9,11 +9,12 @@ from gymnasium import spaces
 class TSPEnv(gym.Env):
     metadata = {"render_modes": []}
 
-    def __init__(self, cfg,nodes, current_positions):
+    def __init__(self, cfg,nodes, current_positions, time_matrix):
         super().__init__()
         self.num_nodes = cfg.num_nodes
         self.nodes = nodes
         self.current_positions = current_positions
+        self.time_matrix = time_matrix # Store the actual travel times
         
         # ---- Observation space ----
         self.observation_space = spaces.Dict({
@@ -57,6 +58,9 @@ class TSPEnv(gym.Env):
         
         self.visited[action] = True
         self.tours[truck_id].append(action)
+        
+        travel_time = self.time_matrix[prev, action]
+        reward = -travel_time 
 
         terminated = self.visited.all()
         return self._get_obs(), reward, terminated, False, {}

@@ -9,6 +9,7 @@ import wandb
 from configs.config import parse_args
 from core.envs.tsp_env import TSPEnv
 from core.models.agent import REINFORCEAgent
+from core.utils.data_loader import MDVRPDataLoader
 
 
 def set_seed(seed):
@@ -20,6 +21,12 @@ def train():
     cfg = parse_args()
     set_seed(cfg.seed)
     os.makedirs("checkpoints", exist_ok=True)
+    
+    loader = MDVRPDataLoader(data_dir="data_version_2")
+    data = loader.load_data()
+
+    # # Update config based on loaded data
+    cfg.num_nodes = data["num_nodes"]
     
     # --- W&B Init ---
     if cfg.wandb:
@@ -40,18 +47,17 @@ def train():
         #[0.33, 0.59],   # node 3 (target)
         #[0.95, 0.22],   # node 4 (target)
         #])        
-    nodes = torch.rand(cfg.num_nodes, 2) 
-    print(f"Node coordinates:\n{nodes}")
-    
-    depot_indices = random.sample(range(cfg.num_nodes), 2)
-    
-    depot_a, depot_b = depot_indices[0], depot_indices[1] # TEMPORAL, FIXME
-    truck_starts = [depot_a, depot_b, depot_b]
+        
+        
+    # node_features: normalized time proximity profiles [N, N]
+    nodes = data["node_features"] 
+    print(f"Node coordinates:\n{nodes}") 
+    truck_starts = [truck.depot_idx for truck in data["trucks"]]
 
     # Initialize environment with multiple start positions
-    env = TSPEnv(cfg, nodes, truck_starts)
+    env = TSPEnv(cfg, nodes, truck_starts, data["time_matrix"])
 
-    agent = REINFORCEAgent(cfg)
+    agent = REINFORCEAgent(cfg, node_dim=cfg.num_nodes)
 
     # Training Loop
     # Using tqdm for a nice progress bar
@@ -73,7 +79,7 @@ def train():
         loss = agent.update()
         
         # Logging to console
-        if episode % 50 == 0:
+        if episode % 10 == 0:
             print(
                 f"Episode {episode:4d} | "
                 f"Total reward: {episode_reward:.3f}| "
