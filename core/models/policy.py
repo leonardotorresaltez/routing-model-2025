@@ -2,41 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-# ----------------------------
-# Attention-based Policy Model
-# ----------------------------
-class AttentionPolicy(nn.Module):
-    def __init__(self, node_dim=2, embed_dim=128):
-        super().__init__()
-        self.node_embed = nn.Linear(node_dim, embed_dim)
-        self.query = nn.Linear(embed_dim, embed_dim)
-        self.key = nn.Linear(embed_dim, embed_dim)
 
-    def forward(self, nodes, current_node_idx, visited_mask):
-        """
-        nodes: [N, node_dim]             node features (e.g. coordinates)
-        current_node_idx: int            current position
-        visited_mask: [N] (bool)         True = already visited
-        """        
-        
-        # Embed nodes
-        h = self.node_embed(nodes)
-        
-        # Query = embedding of current node
-        q = self.query(h[current_node_idx])
-        
-        # Keys = all nodes
-        k = self.key(h)
-        
-         # Attention scores
-        scores = torch.matmul(k, q)
-        
-        # Masking: visited nodes get -inf score
-        scores = scores.masked_fill(visited_mask, float("-inf"))
-        
-        # probability of choosing next node
-        probs = F.softmax(scores, dim=0)
-        return probs
     
     
 # ----------------------------
@@ -60,7 +26,7 @@ class GraphPointerPolicy(nn.Module):
         """
         nodes:        [N, 2]
         current_node: int
-        visited_mask: [N] bool
+        visited_mask: [N] bool  (True = forbidden)
         """
 
         visited_mask = visited_mask.bool()

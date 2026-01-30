@@ -1,6 +1,6 @@
 import torch
 import torch.optim as optim
-from core.models.policy import AttentionPolicy
+
 from core.models.policy import  GraphPointerPolicy
 
 # ----------------------------
@@ -17,20 +17,22 @@ class REINFORCEAgent:
         self.log_probs = []
         self.rewards = []
 
-    def act(self, state):
-        """
-        state = (nodes, current_node, visited_mask)
-        """        
-        nodes = state["nodes"].to(self.cfg.device)
-        visited = state["visited"].to(self.cfg.device)
-        current = state["current"]
+    def act(self,obs, active_truck):
+     
+        nodes = torch.tensor(obs["nodes"], dtype=torch.float32).to(self.cfg.device)
+        visited = torch.tensor(obs["visited_targets"], dtype=torch.bool).to(self.cfg.device)
+
         
-        probs = self.policy(nodes, current, visited)
+        current_node = obs["current_trucks"][active_truck]
+        
+        probs = self.policy(nodes, current_node, visited)
         dist = torch.distributions.Categorical(probs)
+        
         action = dist.sample()
         
         self.log_probs.append(dist.log_prob(action))
-        return action.item()
+        return int(action.item())
+
 
     def store_reward(self, reward):
         self.rewards.append(reward)
@@ -69,76 +71,4 @@ class REINFORCEAgent:
         # Clear buffers
         self.log_probs.clear()
         self.rewards.clear()
-        return loss.item()
-
-
-# ----------------------------
-# REINFORCEFleetAgent 
-# ---------------------------- 
-class REINFORCEFleetAgent:
-    def __init__(self, cfg):
-        self.cfg = cfg
-        self.policy = GraphPointerPolicy(embed_dim=cfg.embed_dim).to(cfg.device)
-        self.optimizer = torch.optim.Adam(self.policy.parameters(), lr=cfg.lr)
-
-        self.log_probs = []
-        self.rewards = []
-
-    def act(self, state):
-        nodes = state["nodes"].to(self.cfg.device)
-        visited_targets = state["visited_targets"].bool().to(self.cfg.device)
-        is_target = state["is_target"].to(self.cfg.device)
-        currents = state["current"]   
-
-        actions = []
-        step_log_probs = []
-
-        invalid_mask = (~is_target) | visited_targets
-
-        for current in currents:
-            probs = self.policy(
-                nodes,
-                int(current),
-                invalid_mask
-            )
-
-            dist = torch.distributions.Categorical(probs)
-            action = dist.sample()
-
-            self.log_probs.append(dist.log_prob(action))
-            actions.append(action.item())
-
-
-        return actions
-
-    def store_reward(self, reward):
-        self.rewards.append(reward)
-
-    def update(self):
-        R = 0
-        returns = []
-
-        for r in reversed(self.rewards):
-            R = r + R
-            returns.insert(0, R)
-
-        returns = torch.tensor(returns).to(self.cfg.device)
-        
-        
-        #  Policy loss
-        loss = 0.0
-        for log_prob, R in zip(self.log_probs, returns):
-            loss += -log_prob * R
-
-        loss = loss / len(self.log_probs)
-
-        # Backprop
-        self.optimizer.zero_grad()
-        loss.backward()
-        self.optimizer.step()
-
-        # Clear buffers
-        self.log_probs.clear()
-        self.rewards.clear()
-
         return loss.item()

@@ -7,7 +7,7 @@ from tqdm import tqdm
 
 from configs.config import parse_args
 from core.envs.tsp_env import TSPEnv
-from core.models.agent import REINFORCEFleetAgent
+from core.models.agent import REINFORCEAgent
 
 def set_seed(seed):
     torch.manual_seed(seed)
@@ -30,50 +30,47 @@ def train():
 
     print(f"--> STARTING RUN: {cfg.run_name}")
     
-    # Node coordinates
-        #example if self.nodes = 5
-        #tensor([
-        #[0.12, 0.77],   # node 0 (source)
-        #[0.44, 0.91],   # node 1 (source)
-        #[0.80, 0.13],   # node 2 (target)
-        #[0.33, 0.59],   # node 3 (target)
-        #[0.95, 0.22],   # node 4 (target)
-        #])        
-    nodes = torch.rand(cfg.num_sources + cfg.num_targets, 2)
+    num_nodes = 50
+    num_sources = 20
 
-    # Randomly select initial positions for trucks from sources
-    #Multiple trucks are allowed to start from the same3 source node
-    current = torch.randint(
-            low=0,
-            high=cfg.num_sources,
-            size=(cfg.num_trucks,)
-    ).tolist()
+    nodes = torch.rand(num_nodes, 2)
 
-    env = TSPEnv(cfg, nodes,current)
-    agent = REINFORCEFleetAgent(cfg)
+    source_mask = np.zeros(num_nodes, dtype=bool)
+    source_mask[:num_sources] = True
+
+    initial_truck_positions = [0, 1, 0]   # both are sources
+
+    env = TSPEnv(
+        nodes=nodes,
+        source_mask=source_mask,
+        initial_truck_positions=initial_truck_positions
+    )
+
+    agent = REINFORCEAgent(cfg)
 
     # Training Loop
     # Using tqdm for a nice progress bar
     pbar = tqdm(range(cfg.episodes))
     print("episode is=", cfg.episodes)
     for episode in pbar:
-        state, _ = env.reset()
-        terminated = False
-        episode_reward = 0.0
-        
-        while not terminated:
-            action = agent.act(state)
-            state, reward, terminated, _ ,_ = env.step(action)
+        obs, _ = env.reset()
+        done = False
+        total_reward = 0.0
+
+        while not done:
+            truck_id = env.active_truck
+            action = agent.act(obs, truck_id)
+            obs, reward, done, _, _ = env.step(action)
+
             agent.store_reward(reward)
-            episode_reward += reward.item()
-            
+            total_reward += reward
+
         loss = agent.update()
-        
-        # Logging to console
+
         if episode % 50 == 0:
             print(
                 f"Episode {episode:4d} | "
-                f"Total reward: {episode_reward:.3f}| "
+                f"Total reward: {total_reward:.3f} | "
                 f"Loss: {loss:.4f}"
             )
 
@@ -85,7 +82,7 @@ def train():
 #                "episode": episode
 #            })
             
-        pbar.set_description(f"Rw: {episode_reward:.2f}")
+        pbar.set_description(f"Rw: {total_reward:.2f}")
 
     # Save
     #path = f"checkpoints/{cfg.run_name}.pt"
