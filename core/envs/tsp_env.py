@@ -222,7 +222,8 @@ class MDVRP_one_agent_per_truck_env(gym.Env):
             truck_state["ready_time"] += travel_time
             truck_state["route"].append(action)
             self.visited_mask[action] = True
-            reward = -travel_time
+            # Goal: Minimize time (-travel_time)
+            reward = - travel_time # FIXME
         else: # safety code, it should NEVER be reached out
             # INVALID MOVE: This truck's day ends at its CURRENT location
             print('holaaaaaaaa')
@@ -249,6 +250,9 @@ class MDVRP_one_agent_per_truck_env(gym.Env):
                 self.truck_active[active_id] = False
 
         terminated = self.visited_mask.all() or not any(self.truck_active.values())
+        if terminated:
+            unvisited_count = (self.visited_mask == False).sum().item()
+            reward -= (unvisited_count * 500.0) # Heavy penalty # Goal: maximize clients
         return self._get_obs(), reward, terminated, False, self._get_info(terminated)
 
     def _has_valid_next_move(self, truck_id):
