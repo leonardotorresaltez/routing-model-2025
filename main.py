@@ -143,7 +143,7 @@ def train_truck_by_truck():
         total_time = info.get('total_time', 0.0)        
         batch_rewards.append(episode_reward)
 
-        # --- Batch Update (REINFORCE) ---
+        # --- Batch Update ---
         if (episode + 1) % 10 == 0:
             loss = agent.update()
             avg_reward = sum(batch_rewards) / len(batch_rewards)
@@ -194,7 +194,7 @@ def train_truck_by_truck():
             # Optional: Save Checkpoint
             if (episode + 1) % 100 == 0:
                 pbar.write("\n--- Sample Route Plan ---")
-                for tid, s in list(truck_results.items())[:5]: # Show first 5 trucks
+                for tid, s in list(truck_results.items()): # Show all trucks trucks
                     if s["route"]:
                         pbar.write(f"  T{tid:02}: {len(s['route']):>2} stops | {s['time']:5.1f}h | {s['route']}")
                 pbar.write("-------------------------\n")

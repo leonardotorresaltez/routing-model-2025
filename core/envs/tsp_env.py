@@ -239,11 +239,13 @@ class MDVRP_one_agent_per_truck_env(gym.Env):
         # Check if truck should be retired anyway (no more FUTURE moves possible)
         if self.truck_active[active_id]:
             if not self._has_valid_next_move(active_id):
-                # Send home and retire
-                h_time = self.time_matrix[truck_state["current_node"], truck_obj.depot_idx].item()
-                truck_state["ready_time"] += h_time
-                truck_state["current_node"] = truck_obj.depot_idx
-                truck_state["route"].append(truck_obj.depot_idx)
+                # Only append depot if we aren't already there
+                if truck_state["current_node"] != truck_obj.depot_idx:
+                    h_time = self.time_matrix[truck_state["current_node"], truck_obj.depot_idx].item()
+                    truck_state["ready_time"] += h_time
+                    truck_state["current_node"] = truck_obj.depot_idx
+                    truck_state["route"].append(truck_obj.depot_idx)
+    
                 self.truck_active[active_id] = False
 
         terminated = self.visited_mask.all() or not any(self.truck_active.values())
@@ -282,6 +284,10 @@ class MDVRP_one_agent_per_truck_env(gym.Env):
         # Find the number of trucks dynamically
         num_trucks = len(self.trucks)
         
+        # idx: Converts the truck's unique ID (which might be a string or a non-sequential number) into a 0-based integer. This index is necessary for accessing positions in tensors and arrays.
+        # truck_identity: A One-Hot Encoded vector (e.g., [0, 0, 1, 0, ...]). It tells the neural network: "You are currently making a decision for Truck #X." Without this, the model wouldn't know which truck it is controlling.
+        # truck_state: Retrieves the dynamic status of the active truck from the environment. It tracks where the truck is currently located (current_node) and how many hours it has worked so far (ready_time).
+        # truck_obj: Retrieves the static properties of the truck (defined in your data files). This is primarily used to find the truck's depot_idx, so the model can calculate how far away "home" is from any given customer.
         # TRUCK IDENTITY (indexed)
         truck_identity = torch.zeros(num_trucks)
         idx = self.truck_id_to_idx[active_id] # Map the data ID to a 0-based vector index

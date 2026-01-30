@@ -164,12 +164,22 @@ class MDVRPREINFORCEAgent:
         self.rewards.append(reward)
 
     def update(self):
-        R = torch.tensor(self.rewards).to(self.cfg.device)
-        # Standardize rewards for stable gradients
-        R = (R - R.mean()) / (R.std() + 1e-9)
+        R = 0
+        returns = []
+        for r in reversed(self.rewards):
+            R = r + R # No discount factor for simple TSP usually, or use 0.99
+            returns.insert(0, R)
+            
+        returns = torch.tensor(returns).to(self.cfg.device)
+        returns = (returns - returns.mean()) / (returns.std() + 1e-9)
         
-        # REINFORCE: we need to update the policy weights by the gradient of the log-probability of the actions, scaled by the reward. 
-        loss = -(torch.stack(self.log_probs) * R).sum()
+        loss = -(torch.stack(self.log_probs) * returns).sum()
+        # R = torch.tensor(self.rewards).to(self.cfg.device)
+        # # Standardize rewards for stable gradients
+        # R = (R - R.mean()) / (R.std() + 1e-9)
+        
+        # # REINFORCE: we need to update the policy weights by the gradient of the log-probability of the actions, scaled by the reward. 
+        # loss = -(torch.stack(self.log_probs) * R).sum()
         
         self.optimizer.zero_grad()
         loss.backward()
