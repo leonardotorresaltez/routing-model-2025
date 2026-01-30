@@ -1,13 +1,15 @@
-import torch
-import random
-import numpy as np
 import os
-import wandb
+import random
+
+import numpy as np
+import torch
 from tqdm import tqdm
 
+import wandb
 from configs.config import parse_args
 from core.envs.tsp_env import TSPEnv
 from core.models.agent import REINFORCEAgent
+
 
 def set_seed(seed):
     torch.manual_seed(seed)
@@ -41,9 +43,14 @@ def train():
     nodes = torch.rand(cfg.num_nodes, 2) 
     print(f"Node coordinates:\n{nodes}")
     
-    current = random.randrange(cfg.num_nodes)    
+    depot_indices = random.sample(range(cfg.num_nodes), 2)
     
-    env = TSPEnv(cfg, nodes, current)
+    depot_a, depot_b = depot_indices[0], depot_indices[1] # TEMPORAL, FIXME
+    truck_starts = [depot_a, depot_b, depot_b]
+
+    # Initialize environment with multiple start positions
+    env = TSPEnv(cfg, nodes, truck_starts)
+
     agent = REINFORCEAgent(cfg)
 
     # Training Loop
@@ -55,10 +62,13 @@ def train():
         episode_reward = 0.0
         
         while not done:
-            action = agent.act(state)
-            state, reward, done, _, _ = env.step(action)
-            agent.store_reward(reward)
-            episode_reward += reward.item()
+            for truck_id in range(len(truck_starts)):
+                if done: break
+                action = agent.act(state, truck_id=truck_id)
+                state, reward, done, _, _ = env.step(action, truck_id=truck_id)
+                agent.store_reward(reward)
+                episode_reward += reward.item()
+            
             
         loss = agent.update()
         

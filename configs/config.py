@@ -1,6 +1,7 @@
 import argparse
 from dataclasses import dataclass
 
+
 @dataclass
 class Config:
     # --- Experiment ---
@@ -9,6 +10,8 @@ class Config:
     seed: int = 42
     device: str = "cpu"
     wandb: bool = True  # Toggle W&B logging
+    um_trucks: int = 3
+    num_depots: int = 2
 
     # --- Environment ---
     num_nodes: int = 10

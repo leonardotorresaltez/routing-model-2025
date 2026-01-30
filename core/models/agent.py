@@ -1,7 +1,8 @@
 import torch
 import torch.optim as optim
-from core.models.policy import AttentionPolicy
-from core.models.policy import  GraphPointerPolicy
+
+from core.models.policy import AttentionPolicy, GraphPointerPolicy
+
 
 class REINFORCEAgent:
     def __init__(self, cfg):
@@ -14,15 +15,15 @@ class REINFORCEAgent:
         self.log_probs = []
         self.rewards = []
 
-    def act(self, state):
+    def act(self, state, truck_id):
         """
         state = (nodes, current_node, visited_mask)
         """        
         nodes = state["nodes"].to(self.cfg.device)
         visited = state["visited"].to(self.cfg.device)
-        current = state["current"]
+        current_truck_pos = state['current'][truck_id].item()
         
-        probs = self.policy(nodes, current, visited)
+        probs = self.policy(nodes, current_truck_pos, visited)
         dist = torch.distributions.Categorical(probs)
         action = dist.sample()
         
