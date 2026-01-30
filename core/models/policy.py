@@ -35,6 +35,7 @@ class AttentionPolicy(nn.Module):
         # Masking: visited nodes get -inf score
         scores = scores.masked_fill(visited_mask, float("-inf"))
         
+        
         # probability of choosing next node
         probs = F.softmax(scores, dim=0)
         return probs
@@ -115,7 +116,9 @@ class GraphPointerPolicy(nn.Module):
 
         #compute attention scores
         scores = torch.matmul(k, q)       # [N]
-        scores = scores.masked_fill(visited_mask, -1e9)
+        # scores = scores.masked_fill(visited_mask, -1e9)
+        scores = scores.masked_fill(visited_mask, float("-inf"))
+
 
         probs = F.softmax(scores, dim=0)
         return probs    

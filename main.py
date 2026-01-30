@@ -6,12 +6,13 @@ from tqdm import tqdm
 
 import wandb
 from configs.config import parse_args
-from core.envs.tsp_env import MDVRPEnv
-from core.models.agent import MDVRPREINFORCEAgent
+from core.envs.tsp_env import MDVRP_one_agent_per_truck_env, MDVRPEnv
+from core.models.agent import (MDVRP_one_agent_per_truck_REINFORCE_agent,
+                               MDVRPREINFORCEAgent)
 from core.utils.data_loader import MDVRPDataLoader
 
 
-def train():
+def train_one_episode_one_step_all_fleet():
     """
     Reset: Start a fresh day with all customers unvisited.
     Act: The Agent builds a full plan for the day.
@@ -78,5 +79,129 @@ def train():
     torch.save(agent.policy.state_dict(), f"checkpoints/mdvrp_{cfg.run_name}.pt")
     if cfg.wandb: wandb.finish()
 
+
+
+
+
+def train_truck_by_truck():
+
+    
+    cfg = parse_args()
+    os.makedirs("checkpoints", exist_ok=True)
+    
+    loader = MDVRPDataLoader(data_dir=cfg.data_dir)
+    data = loader.load_data()
+
+    if cfg.wandb:
+        wandb.init(project="mdvrp-rl", name=cfg.run_name, config=vars(cfg))
+
+    env = MDVRP_one_agent_per_truck_env(cfg, data)
+    agent = MDVRP_one_agent_per_truck_REINFORCE_agent(cfg, data)
+    
+    batch_rewards = []
+    print(f"--> STARTING RUN: {cfg.run_name}")
+    
+    pbar = tqdm(range(cfg.episodes))
+    for episode in pbar:
+        state, _ = env.reset()
+        terminated = False
+        
+        episode_reward = 0
+        episode_steps = 0
+        
+        # --- Step-by-Step Loop ---
+        while not terminated:
+            
+    
+            # WHO & WHERE: The state tells the agent: "Truck #5 is at Node A and ready." - truck by truck-
+            # DECISION: Agent picks a CUSTOMER for Truck #5. 
+            # Before picking, the agent calculates a constraint_mask. 
+            # It "sees" which customers are too far to visit and still get home by the 24h mark. 
+            # It effectively ignores those customers, making it impossible to pick an invalid move
+            action = agent.act(state) 
+            
+            
+            # FEEDBACK: Store the reward for that specific move.
+            if action is not None:
+                # MOVEMENT: Environment "drives" Truck #5 to the customer.
+                # UPDATE: Environment marks customer as visited and updates Truck #5's clock.
+                # NEXT UP: Environment finds the next truck that will be free and puts it in the 'state'.
+                state, reward, terminated, truncated, info = env.step(action)
+                if terminated:
+                    # Objective 1 & 2: Validate results
+                    total_visited = info["total_visited"]
+                    total_time = info["total_time"] 
+                agent.store_reward(reward) # Only store if we acted
+                episode_reward += reward
+            
+            
+            episode_steps += 1
+            
+
+        # info['total_visited'] and info['total_time'] should be calculated by env.step
+        total_visited = info.get('total_visited', episode_steps)
+        total_time = info.get('total_time', 0.0)        
+        batch_rewards.append(episode_reward)
+
+        # --- Batch Update (REINFORCE) ---
+        if (episode + 1) % 10 == 0:
+            loss = agent.update()
+            avg_reward = sum(batch_rewards) / len(batch_rewards)
+            
+            # Extract truck-specific data from the LAST episode of the batch
+            truck_results = info.get("truck_results", {})
+            active_trucks = [s for s in truck_results.values() if s["route"]]
+            num_active = len(active_trucks)
+            
+            # Calculate average time only for trucks that actually worked
+            avg_work_time = sum(s["time"] for s in active_trucks) / num_active if num_active > 0 else 0
+            max_work_time = max([s["time"] for s in active_trucks], default=0)
+
+            
+            # Update Progress Bar with current metrics
+            pbar.write(
+                f"Episode {episode+1:>4} | "
+                f"Avg Reward: {avg_reward:.3f} | "
+                f"Visited: {total_visited} | "
+                f"Loss: {loss:.4f} | "
+                f"Total Time: {total_time:.2f}h |"
+                f"Trucks: {num_active:>2} | "
+                f"AvgT: {avg_work_time:.1f}h | "
+                f"MaxT: {max_work_time:.1f}h"
+            )
+            
+            if cfg.wandb:
+                wandb_data = {
+                    "avg_reward": avg_reward,
+                    "total_visited": total_visited,
+                    "loss": loss,
+                    "fleet/active_trucks": num_active,
+                    "fleet/avg_truck_time": avg_work_time,
+                    "fleet/max_truck_time": max_work_time,
+                    "fleet/total_fleet_time": total_time,
+                }
+                
+                # Log distribution of times (creates a histogram in wandb)
+                if active_trucks:
+                    times = [s["time"] for s in active_trucks]
+                    wandb_data["distributions/truck_times"] = wandb.Histogram(times)
+                
+                wandb.log(wandb_data)
+            
+            
+            batch_rewards = [] # Reset batch tracker
+
+            # Optional: Save Checkpoint
+            if (episode + 1) % 100 == 0:
+                pbar.write("\n--- Sample Route Plan ---")
+                for tid, s in list(truck_results.items())[:5]: # Show first 5 trucks
+                    if s["route"]:
+                        pbar.write(f"  T{tid:02}: {len(s['route']):>2} stops | {s['time']:5.1f}h | {s['route']}")
+                pbar.write("-------------------------\n")
+
+    if cfg.wandb:
+        wandb.finish()
+        
 if __name__ == "__main__":
-    train()
+    train_truck_by_truck()
+    # train_one_episode_one_step_all_fleet()

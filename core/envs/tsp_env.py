@@ -1,4 +1,5 @@
 import random
+import sys
 
 import gymnasium as gym
 import numpy as np
@@ -132,3 +133,183 @@ class MDVRPEnv(gym.Env):
         The environment is responsible for telling the agent what the world looks like.
         """
         return {"node_features": self.node_features.clone()}
+
+
+
+
+class MDVRP_one_agent_per_truck_env(gym.Env):
+    def __init__(self, cfg, data):
+        super().__init__()
+        self.cfg = cfg
+        self.node_features = data["node_features"]
+        self.time_matrix = data["time_matrix"]
+        self.trucks = data["trucks"]
+        self.depots = data["depots"]
+        self.customers = data["customers"]
+        self.num_nodes = data["num_nodes"]
+
+        # Define the ID mapping BEFORE calling reset()
+        self.truck_id_to_idx = {t.id: i for i, t in enumerate(self.trucks)}
+
+        self.observation_space = spaces.Dict({
+            "node_features": spaces.Box(0.0, 1.0, (self.num_nodes, self.num_nodes), dtype=np.float32)
+        })
+        
+        self.action_space = spaces.Discrete(self.num_nodes)
+        
+        # Safe to call now
+        self.reset()
+        
+    def _get_info(self, terminated):
+        """
+        Helper to create the info dictionary used for logging and debugging.
+        """
+        info = {}
+        if terminated:
+            # Full report at the end of the day
+            info["truck_results"] = {
+                tid: {
+                    "route": data["route"],
+                    "time": data["ready_time"]
+                } for tid, data in self.truck_states.items()
+            }
+            # Total time spent by the entire fleet
+            info["total_time"] = sum(t["ready_time"] for t in self.truck_states.values())
+            
+            # Count only actual customers visited (exclude depots)
+            # We subtract the number of depots because depots were pre-masked as 'visited'
+            info["total_visited"] = int(self.visited_mask.sum().item() - len(self.depots))
+            
+        return info
+
+
+
+    def reset(self, seed=None, options=None):
+        super().reset(seed=seed)
+        # Track state for each truck
+        self.truck_states = {
+            t.id: {
+                "current_node": t.depot_idx,
+                "ready_time": 0.0,
+                "route": []
+            } for t in self.trucks
+        }
+        self.visited_mask = torch.zeros(self.num_nodes, dtype=torch.bool)
+        # Pre-mask depots so they aren't visited as customers
+        for d in self.depots:
+            self.visited_mask[d.idx] = True
+        
+        self.truck_active = {t.id: True for t in self.trucks}            
+        return self._get_obs(), {}
+
+    def step(self, action):
+        active_id = self._get_next_truck_id()
+        truck_state = self.truck_states[active_id]
+        truck_obj = next(t for t in self.trucks if t.id == active_id)
+        
+        prev_node = truck_state["current_node"]
+        travel_time = self.time_matrix[prev_node, action].item()
+        # Time from the POTENTIAL new node back to depot
+        time_home_from_action = self.time_matrix[action, truck_obj.depot_idx].item()
+        
+        # THE HARD ENFORCEMENT
+        limit = self.cfg.max_daily_delivery_time_each_truck
+        total_time_if_visited = truck_state["ready_time"] + travel_time + time_home_from_action
+        
+        if total_time_if_visited <= limit:
+            # VALID MOVE: Update state
+            truck_state["current_node"] = action
+            truck_state["ready_time"] += travel_time
+            truck_state["route"].append(action)
+            self.visited_mask[action] = True
+            reward = -travel_time
+        else: # safety code, it should NEVER be reached out
+            # INVALID MOVE: This truck's day ends at its CURRENT location
+            print('holaaaaaaaa')
+            sys.exit()
+            time_home_from_prev = self.time_matrix[prev_node, truck_obj.depot_idx].item()
+            truck_state["ready_time"] += time_home_from_prev
+            truck_state["current_node"] = truck_obj.depot_idx
+            truck_state["route"].append(truck_obj.depot_idx)
+            
+            # RETIRE THE TRUCK
+            self.truck_active[active_id] = False
+            reward = -time_home_from_prev - 50.0 # Heavy penalty for invalid choice
+            
+        # Check if truck should be retired anyway (no more FUTURE moves possible)
+        if self.truck_active[active_id]:
+            if not self._has_valid_next_move(active_id):
+                # Send home and retire
+                h_time = self.time_matrix[truck_state["current_node"], truck_obj.depot_idx].item()
+                truck_state["ready_time"] += h_time
+                truck_state["current_node"] = truck_obj.depot_idx
+                truck_state["route"].append(truck_obj.depot_idx)
+                self.truck_active[active_id] = False
+
+        terminated = self.visited_mask.all() or not any(self.truck_active.values())
+        return self._get_obs(), reward, terminated, False, self._get_info(terminated)
+
+    def _has_valid_next_move(self, truck_id):
+        """Helper to check if a truck has at least one reachable unvisited customer."""
+        state = self.truck_states[truck_id]
+        truck_obj = next(t for t in self.trucks if t.id == truck_id)
+        limit = self.cfg.max_daily_delivery_time_each_truck
+        
+        for i in range(self.num_nodes):
+            if not self.visited_mask[i]:
+                t_to_i = self.time_matrix[state["current_node"], i].item()
+                t_home = self.time_matrix[i, truck_obj.depot_idx].item()
+                if state["ready_time"] + t_to_i + t_home <= limit:
+                    return True
+        return False
+
+
+
+
+    def _get_next_truck_id(self):
+        # Only select from trucks that are still allowed to work
+        available = [tid for tid, active in self.truck_active.items() if active]
+        if not available: return None
+        return min(available, key=lambda tid: self.truck_states[tid]["ready_time"]) # The truck selected is the one with less time of travel
+
+
+    def _get_obs(self):
+        active_id = self._get_next_truck_id()
+        if active_id is None:
+            return {"active_truck_id": None}
+        
+        
+        # Find the number of trucks dynamically
+        num_trucks = len(self.trucks)
+        
+        # TRUCK IDENTITY (indexed)
+        truck_identity = torch.zeros(num_trucks)
+        idx = self.truck_id_to_idx[active_id] # Map the data ID to a 0-based vector index
+        truck_identity[idx] = 1.0
+        truck_state = self.truck_states[active_id]
+        truck_obj = next(t for t in self.trucks if t.id == active_id)
+
+        # GLOBAL FLEET STATUS
+        limit = self.cfg.max_daily_delivery_time_each_truck
+        fleet_ready_times = torch.tensor([
+            self.truck_states[t.id]["ready_time"] / limit 
+            for t in self.trucks
+        ], dtype=torch.float32)
+        
+
+
+        # EPOT PROXIMITY (Fixed for Tensor types)
+        # Access the column directly from the matrix and ensure it is a float tensor
+        depot_dist = self.time_matrix[:, truck_obj.depot_idx].clone().detach().float()
+
+        return {
+            "node_features": self.node_features.clone(),
+            "current_node": truck_state["current_node"],
+            "current_time": truck_state["ready_time"],
+            "active_truck_id": active_id,
+            "visited_mask": self.visited_mask.clone(),
+            "depot_dist": depot_dist,
+            "fleet_status": fleet_ready_times,
+            "truck_identity": truck_identity
+        }
+

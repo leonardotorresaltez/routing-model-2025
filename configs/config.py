@@ -12,7 +12,7 @@ class Config:
     wandb: bool = True  # Toggle W&B logging
     data_dir: str = "data_version_2"  # data path
     if data_dir == "data_version_2":
-        max_daily_delivery_time_each_truck: int = 24 # hours
+        max_daily_delivery_time_each_truck: int = 24 # 24 # hours
     else:
         max_daily_delivery_time_each_truck: int = 1000 # hours
     
@@ -21,7 +21,7 @@ class Config:
     
     # --- Training ---
     lr: float = 1e-3
-    episodes: int = 200 # 500
+    episodes: int = 500 # 200 # 500
     log_interval: int = 20
 
 def parse_args() -> Config:

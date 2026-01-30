@@ -19,11 +19,27 @@ class REINFORCEAgent:
         """
         state = (nodes, current_node, visited_mask)
         """        
-        nodes = state["nodes"].to(self.cfg.device)
-        visited = state["visited"].to(self.cfg.device)
-        current = state["current"]
+        node_features = state["node_features"].to(self.cfg.device)
+        current_node = state["current_node"]
+        current_time = state["current_time"]
+        visited_mask = state["visited_mask"].to(self.cfg.device)
+        active_truck_id = state["active_truck_id"]
         
-        probs = self.policy(nodes, current, visited)
+        # Get the depot index for the active truck
+        truck_obj = next(t for t in self.data["trucks"] if t.id == active_truck_id)
+        depot_idx = truck_obj.depot_idx
+        
+        # Create a stricter mask based on time constraints
+        # A customer is only 'choosable' if: Time_Now + Time_to_Customer + Time_Back_to_Depot <= Limit
+        constraint_mask = visited_mask.clone()
+        for i in range(self.data["num_nodes"]):
+            if not constraint_mask[i]:
+                time_to_i = self.data["time_matrix"][current_node, i].item()
+                time_home = self.data["time_matrix"][i, depot_idx].item()
+                if current_time + time_to_i + time_home > self.cfg.max_daily_delivery_time_each_truck:
+                    constraint_mask[i] = True
+        
+        probs = self.policy(node_features, current_node, constraint_mask)
         dist = torch.distributions.Categorical(probs)
         action = dist.sample()
         
@@ -162,3 +178,118 @@ class MDVRPREINFORCEAgent:
         self.log_probs.clear()
         self.rewards.clear()
         return loss.item()
+
+
+
+class MDVRP_one_agent_per_truck_REINFORCE_agent:
+    """
+    This is the Decision Maker that uses the brain.
+
+    Action: It calls the Policy repeatedly to build complete routes for all 50 trucks.
+    Memory: It stores the log_probs (how confident it was in its choices) and the rewards received.
+    Update: It uses the REINFORCE algorithm. If a journey had a good reward (short time), it "strengthens" the brain to make those choices more likely in the future.
+    """
+    def __init__(self, cfg, data):
+        self.cfg = cfg
+        self.data = data
+        
+        # Use data["trucks"] instead of self.trucks
+        self.truck_id_to_idx = {t.id: i for i, t in enumerate(data["trucks"])}
+        
+        # num_nodes + 1 (depot_dist) + num_trucks (fleet_status) + num_trucks (one-hot identity)
+        input_dim = data["num_nodes"] + 1 + (len(data["trucks"]) * 2)
+        
+        self.policy = GraphPointerPolicy(node_dim=input_dim, embed_dim=cfg.embed_dim)
+        self.policy.to(cfg.device)
+        self.optimizer = optim.Adam(self.policy.parameters(), lr=cfg.lr)
+        
+        self.log_probs = []
+        self.rewards = []
+
+
+
+
+    def store_reward(self, reward):
+        self.rewards.append(reward)
+
+    def update(self):
+        R = torch.tensor(self.rewards).to(self.cfg.device)
+        # Standardize rewards for stable gradients
+        R = (R - R.mean()) / (R.std() + 1e-9)
+        
+        # REINFORCE: we need to update the policy weights by the gradient of the log-probability of the actions, scaled by the reward. 
+        loss = -(torch.stack(self.log_probs) * R).sum()
+        
+        self.optimizer.zero_grad()
+        loss.backward()
+        self.optimizer.step()
+        
+        self.log_probs.clear()
+        self.rewards.clear()
+        return loss.item()
+    
+    def act(self, state):
+        if state.get("active_truck_id") is None: return None
+
+        # Prepare Features
+        node_features = state["node_features"].to(self.cfg.device)
+        depot_dist = state["depot_dist"].to(self.cfg.device).view(-1, 1)
+        
+        # Fleet context (Broadcast to all nodes)
+        fleet_info = torch.cat([state["fleet_status"], state["truck_identity"]]).to(self.cfg.device)
+        global_context = fleet_info.repeat(node_features.size(0), 1)
+        
+        
+        # the agent needs these extra features to understand:
+        # -Which truck it is (since different trucks have different starting depots).
+        # -How much time it has left compared to the rest of the fleet.
+        # -How "dangerous" it is to visit a node in terms of the time required to return to its specific depot.
+        enhanced_features = torch.cat([node_features, depot_dist, global_context], dim=1)
+        
+        current_node = state["current_node"]
+        visited_mask = state["visited_mask"].to(self.cfg.device)
+        
+        # masking: Calculate valid moves
+        constraint_mask = self._apply_time_constraints(state, visited_mask)
+        
+        if constraint_mask.all():
+            # If nothing is reachable, return the depot index to end the route gracefully
+            truck_obj = next(t for t in self.data["trucks"] if t.id == state["active_truck_id"])
+            action = truck_obj.depot_idx
+            # Record a "100% probability" log_prob (0.0) so the lists stay the same length
+            self.log_probs.append(torch.tensor(0.0, device=self.cfg.device))
+            return action
+        
+        probs = self.policy(enhanced_features, current_node, constraint_mask)        
+        # ---  Use probs= instead of logits= ---
+        dist = torch.distributions.Categorical(probs=probs)
+        action = dist.sample()
+        
+        self.log_probs.append(dist.log_prob(action))
+        return action.item()
+
+
+    def _apply_time_constraints(self, state, visited_mask):
+        """
+        Calculates a mask where True = Node is unreachable or invalid.
+        """
+        curr_node = state["current_node"]
+        curr_time = state["current_time"]
+        active_id = state["active_truck_id"]
+        
+        truck_obj = next(t for t in self.data["trucks"] if t.id == active_id)
+        limit = self.cfg.max_daily_delivery_time_each_truck
+        
+        mask = visited_mask.clone()
+        for i in range(self.data["num_nodes"]):
+            if not mask[i]:
+                t_to_i = self.data["time_matrix"][curr_node, i].item()
+                t_home = self.data["time_matrix"][i, truck_obj.depot_idx].item()
+                
+                # If this move violates the max_daily_delivery_time_each_truck h wall, hide it from the agent
+                if curr_time + t_to_i + t_home > limit:
+                    mask[i] = True
+        return mask
+
+
+
