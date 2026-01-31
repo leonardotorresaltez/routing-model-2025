@@ -4,10 +4,12 @@ import numpy as np
 import os
 import wandb
 from tqdm import tqdm
+import sys
 
 from configs.config import parse_args
 from core.envs.tsp_env import TSPEnv
 from core.models.agent import REINFORCEAgent
+from core.utils.data_loader import MDVRPDataLoader
 
 def set_seed(seed):
     torch.manual_seed(seed)
@@ -20,6 +22,13 @@ def train():
     
     #os.makedirs("checkpoints", exist_ok=True)
     
+    loader = MDVRPDataLoader(data_dir=cfg.data_dir)
+    data = loader.load_data()
+    
+    # # Update config based on loaded data
+    #TODO 
+    cfg.num_nodes = data["num_nodes"]   
+    
     # --- W&B Init ---
 #    if cfg.wandb:
 #        wandb.init(
@@ -30,20 +39,50 @@ def train():
 
     print(f"--> STARTING RUN: {cfg.run_name}")
     
-    num_nodes = 50
-    num_sources = 20
+    #num_nodes = 50
+    num_nodes = cfg.num_nodes
+    #num_sources = 20
 
-    nodes = torch.rand(num_nodes, 2)
+    #nodes = torch.rand(num_nodes, 2)
 
-    source_mask = np.zeros(num_nodes, dtype=bool)
-    source_mask[:num_sources] = True
+    #source_mask = np.zeros(num_nodes, dtype=bool)
+    #source_mask[:num_sources] = True
+    
+    # Determinar source_mask usando la propiedad isSource de cada nodo
+    #source_mask = np.array([getattr(node, 'isSource', False) for node in data["nodes"]], dtype=bool)    
 
-    initial_truck_positions = [0, 1, 0]   # both are sources
+    #initial_truck_positions = [0, 1, 0]   # both are sources
+    
+    
+    
+    # newwwwww
+    nodesObjs = data["nodes"] 
+    nodes = torch.tensor([[n.lat, n.lon] for n in nodesObjs], dtype=torch.float32)
+
+    print(f"num_nodes:{num_nodes}") 
+    print(f"nodesObjs  size:{len(nodesObjs)}") 
+    
+    source_mask = np.array([getattr(node, 'isSource', False) for node in nodesObjs], dtype=bool)  
+    print(type(source_mask))
+    #print(f"source_mask:\n{source_mask}")
+    #print(f"Nodes :\n{nodes}") 
+    
+    print(f"number of depots:\n{len(data['depots'])}")  
+    print(f"number of customers:\n{len(data['customers'])}")  
+    
+    print(f"number of trucks:\n{len(data['trucks'])}")
+    
+    initial_truck_positions = [truck.depot_idx for truck in data["trucks"]]
+    print(f"len truck_starts:\n{len(initial_truck_positions)}")
+    
+    print("TRUCK STARTS:", initial_truck_positions)
+    #sys.exit(0) 
 
     env = TSPEnv(
         nodes=nodes,
         source_mask=source_mask,
-        initial_truck_positions=initial_truck_positions
+        initial_truck_positions=initial_truck_positions,
+        time_matrix=data["time_matrix"]      
     )
 
     agent = REINFORCEAgent(cfg)

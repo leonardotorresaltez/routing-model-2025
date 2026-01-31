@@ -15,6 +15,13 @@ class Config:
     num_targets: int = 10
     num_trucks: int = 5
     
+    #TODO
+    data_dir: str = "data_version_2"  # data path
+    if data_dir == "data_version_2":
+        max_daily_delivery_time_each_truck: int = 24 # hours
+    else:
+        max_daily_delivery_time_each_truck: int = 1000 # hours    
+    
     # --- Model ---
     embed_dim: int = 128
     
@@ -32,6 +39,7 @@ def parse_args() -> Config:
     parser.add_argument("--embed_dim", type=int, default=128)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--device", type=str, default="cpu")
+    parser.add_argument("--data_dir", type=str, default="data_version_2")
     
     # Flag: --no-wandb to disable logging
     parser.add_argument("--no-wandb", action="store_true", help="Disable W&B")
@@ -39,7 +47,7 @@ def parse_args() -> Config:
     args = parser.parse_args()
     
     # Construct Run Name
-    run_name = f"N{args.nodes}_lr{args.lr}_sd{args.seed}"
+    run_name = f"{args.data_dir}_lr{args.lr}_sd{args.seed}"
     
     return Config(
        
@@ -49,5 +57,6 @@ def parse_args() -> Config:
         seed=args.seed,
         device=args.device,
         wandb=not args.no_wandb,
-        run_name=run_name
+        run_name=run_name,
+        data_dir=args.data_dir,
     )

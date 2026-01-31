@@ -13,10 +13,11 @@ class TSPEnv(gym.Env):
         nodes,                    # Tensor [N, 2]
         source_mask,              # np.array [N] bool
         initial_truck_positions,  # list[int]
+        time_matrix,         
     ):
         super().__init__()
 
-
+        self.time_matrix = time_matrix # Store the actual travel times
         self.nodes = nodes.clone()
         self.num_nodes = nodes.shape[0]
 
@@ -83,9 +84,10 @@ class TSPEnv(gym.Env):
         self.truck_positions[truck_id] = action
         self.visited_targets[action] = True
 
-        dist = torch.norm(
-            self.nodes[prev_node] - self.nodes[action]
-        ).item()
+        #dist = torch.norm(
+        #    self.nodes[prev_node] - self.nodes[action]
+        #).item()
+        dist = self.time_matrix[prev_node, action]
         reward = -dist
 
         self.active_truck = (self.active_truck + 1) % self.num_trucks
