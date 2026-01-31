@@ -203,5 +203,5 @@ def train_truck_by_truck():
         wandb.finish()
         
 if __name__ == "__main__":
-    train_truck_by_truck()
+    train_truck_by_truck() 
     # train_one_episode_one_step_all_fleet()
