@@ -17,11 +17,14 @@ class Node:
     lat: float
     lon: float
     isSource: bool = field(init=False)
-
+    
+    def location(self) -> Tuple[float, float]:
+        return (self.lat, self.lon)
 
 @dataclass
 class Customer(Node):
     road_access_type: str
+    delivered: bool = False
     
 @dataclass
 class Truck:

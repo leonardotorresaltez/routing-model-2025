@@ -67,6 +67,8 @@ class TSPEnv(gym.Env):
         
         self.active_truck = 0
         
+        self.tours = [[pos] for pos in self.initial_truck_positions]
+        
         return self._get_obs(), {}
 
     def _get_obs(self):
@@ -83,6 +85,8 @@ class TSPEnv(gym.Env):
 
         self.truck_positions[truck_id] = action
         self.visited_targets[action] = True
+        
+        self.tours[truck_id].append(action)
 
         #dist = torch.norm(
         #    self.nodes[prev_node] - self.nodes[action]

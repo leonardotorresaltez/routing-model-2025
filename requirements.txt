@@ -10,6 +10,8 @@ gymnasium==1.0.0
 # Experiment Tracking & UI
 wandb
 tqdm
+matplotlib
+plotly
 
 # Web/API 
 Flask==2.2.2

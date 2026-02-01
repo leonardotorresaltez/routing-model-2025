@@ -10,6 +10,8 @@ from configs.config import parse_args
 from core.envs.tsp_env import TSPEnv
 from core.models.agent import REINFORCEAgent
 from core.utils.data_loader import MDVRPDataLoader
+from core.utils.evaluation_utils import evaluate_solution
+from core.utils.visualization_utils_plotly import create_routing_graph, visualize_routing_solution
 
 def set_seed(seed):
     torch.manual_seed(seed)
@@ -30,12 +32,12 @@ def train():
     cfg.num_nodes = data["num_nodes"]   
     
     # --- W&B Init ---
-#    if cfg.wandb:
-#        wandb.init(
-#            project=cfg.project_name, 
-#            name=cfg.run_name, 
-#            config=vars(cfg)
-#        )
+    if cfg.wandb:
+        wandb.init(
+            project=cfg.project_name, 
+            name=cfg.run_name, 
+            config=vars(cfg)
+        )
 
     print(f"--> STARTING RUN: {cfg.run_name}")
     
@@ -72,16 +74,16 @@ def train():
     
     print(f"number of trucks:\n{len(data['trucks'])}")
     
-    initial_truck_positions = [truck.depot_idx for truck in data["trucks"]]
-    print(f"len truck_starts:\n{len(initial_truck_positions)}")
+    truck_starts = [truck.depot_idx for truck in data["trucks"]]
+    print(f"len truck_starts:\n{len(truck_starts)}")
     
-    print("TRUCK STARTS:", initial_truck_positions)
+    print("TRUCK STARTS:", truck_starts)
     #sys.exit(0) 
 
     env = TSPEnv(
         nodes=nodes,
         source_mask=source_mask,
-        initial_truck_positions=initial_truck_positions,
+        initial_truck_positions=truck_starts,
         time_matrix=data["time_matrix"]      
     )
 
@@ -94,7 +96,7 @@ def train():
     for episode in pbar:
         obs, _ = env.reset()
         done = False
-        total_reward = 0.0
+        episode_reward = 0.0
 
         while not done:
             truck_id = env.active_truck
@@ -102,26 +104,44 @@ def train():
             obs, reward, done, _, _ = env.step(action)
 
             agent.store_reward(reward)
-            total_reward += reward
+            episode_reward += reward
+            
+        # Check constraints and compute reward inputs   
+        total_destinations_visited, total_time = evaluate_solution(env, data, truck_starts, cfg)                
+
+        for customer in data["customers"]:
+            if customer.idx in [node for tour in env.tours for node in tour]:
+                customer.delivered = True
+            else:
+                customer.delivered = False
 
         loss = agent.update()
 
         if episode % 50 == 0:
             print(
                 f"Episode {episode:4d} | "
-                f"Total reward: {total_reward:.3f} | "
+                f"Total reward: {episode_reward:.3f} | "
                 f"Loss: {loss:.4f}"
             )
+            print("Tours shape: ", [len(tour) for tour in env.tours])
+            print("Tours: ", env.tours)
+            print("Total time: ", total_time)
+            print("Total destinations visited: ", total_destinations_visited)
+ 
+            G = create_routing_graph(data["depots"], data["customers"], env.tours, truck_starts)
+            visualize_routing_solution(G, step=episode, title_suffix="Final step", save_path=f"checkpoints/visualization_episode{episode}.html")
+             
+                        
 
         # Logging to W&B
-#        if cfg.wandb:
-#            wandb.log({
-#                "reward": episode_reward,
-#                "loss": loss,
-#                "episode": episode
-#            })
+        if cfg.wandb:
+            wandb.log({
+                "reward": episode_reward,
+                "loss": loss,
+                "episode": episode
+            })
             
-        pbar.set_description(f"Rw: {total_reward:.2f}")
+        pbar.set_description(f"Rw: {episode_reward:.2f}")
 
     # Save
     #path = f"checkpoints/{cfg.run_name}.pt"
