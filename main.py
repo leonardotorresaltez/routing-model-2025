@@ -11,6 +11,7 @@ from core.envs.tsp_env import TSPEnv
 from core.models.agent import REINFORCEAgent
 from core.utils.data_loader import MDVRPDataLoader
 from core.utils.evaluation_utils import evaluate_solution
+from core.utils.visualization_utils_plotly import create_routing_graph, visualize_routing_solution
 
 
 def set_seed(seed):
@@ -57,6 +58,9 @@ def train():
     truck_starts = [truck.depot_idx for truck in data["trucks"]]
     print(f"Truck start positions (indices): {truck_starts}")
 
+    customers = data["customers"]
+    depots = data["depots"]
+
     # Initialize environment with multiple start positions
     env = TSPEnv(cfg, nodes, truck_starts, data["time_matrix"])
 
@@ -81,7 +85,12 @@ def train():
         # Check constraints and compute reward inputs   
         total_destinations_visited, total_time = evaluate_solution(env, data, truck_starts, cfg)      
         
-
+        for customer in customers:
+            if customer.idx in [node for tour in env.tours for node in tour]:
+                customer.delivered = True
+            else:
+                customer.delivered = False
+        
 
         loss = agent.update()
         
@@ -96,6 +105,10 @@ def train():
             print("Tours: ", env.tours)
             print("Total time: ", total_time)
             print("Total destinations visited: ", total_destinations_visited)
+
+            G = create_routing_graph(depots, customers, env.tours, truck_starts)
+            visualize_routing_solution(G, step=episode, title_suffix="Final step", save_path=f"checkpoints/visualization_episode{episode}.html")
+        
 
         # Logging to W&B
         if cfg.wandb:
