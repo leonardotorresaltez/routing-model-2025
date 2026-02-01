@@ -53,7 +53,9 @@ def train():
     # node_features: normalized time proximity profiles [N, N]
     nodes = data["node_features"] 
     print(f"Node coordinates:\n{nodes}") 
+    print("Node shape:", nodes.shape)
     truck_starts = [truck.depot_idx for truck in data["trucks"]]
+    print(f"Truck start positions (indices): {truck_starts}")
 
     # Initialize environment with multiple start positions
     env = TSPEnv(cfg, nodes, truck_starts, data["time_matrix"])
@@ -90,6 +92,10 @@ def train():
                 f"Total reward: {episode_reward:.3f}| "
                 f"Loss: {loss:.4f}"
             )
+            print("Tours shape: ", [len(tour) for tour in env.tours])
+            print("Tours: ", env.tours)
+            print("Total time: ", total_time)
+            print("Total destinations visited: ", total_destinations_visited)
 
         # Logging to W&B
         if cfg.wandb:
