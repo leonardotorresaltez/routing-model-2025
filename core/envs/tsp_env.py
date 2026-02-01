@@ -52,10 +52,6 @@ class TSPEnv(gym.Env):
         prev = self.current_positions[truck_id]
         self.current_positions[truck_id] = action
         
-        # Calculate distance for the specific truck
-        dist = torch.norm(self.nodes[prev] - self.nodes[action])
-        reward = -dist # Minimize distance = Maximize negative distance
-        
         self.visited[action] = True
         self.tours[truck_id].append(action)
         
