@@ -22,7 +22,7 @@ def train():
     set_seed(cfg.seed)
     os.makedirs("checkpoints", exist_ok=True)
     
-    loader = MDVRPDataLoader(data_dir="data_version_2")
+    loader = MDVRPDataLoader(data_dir=cfg.data_dir)
     data = loader.load_data()
 
     # # Update config based on loaded data
