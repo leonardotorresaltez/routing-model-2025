@@ -10,6 +10,7 @@ from configs.config import parse_args
 from core.envs.tsp_env import TSPEnv
 from core.models.agent import REINFORCEAgent
 from core.utils.data_loader import MDVRPDataLoader
+from core.utils.evaluation_utils import evaluate_solution
 
 
 def set_seed(seed):
@@ -74,8 +75,12 @@ def train():
                 state, reward, done, _, _ = env.step(action, truck_id=truck_id)
                 agent.store_reward(reward)
                 episode_reward += reward.item()
-            
-            
+
+        # Check constraints and compute reward inputs   
+        total_destinations_visited, total_time = evaluate_solution(env, data, truck_starts, cfg)      
+        
+
+
         loss = agent.update()
         
         # Logging to console
