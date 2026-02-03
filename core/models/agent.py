@@ -1,7 +1,9 @@
 import torch
 import torch.optim as optim
 
-from core.models.policy import  GraphPointerPolicy
+import torch.nn.functional as F
+
+from core.models.policy import  GraphPointerPolicy, MultiHeadGraphPointerPolicy
 
 # ----------------------------
 # REINFORCEAgent 

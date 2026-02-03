@@ -15,7 +15,7 @@ class Config:
     num_targets: int = 10
     num_trucks: int = 5
     
-    #TODO
+    #TODO working with version 1 ?
     data_dir: str = "data_version_2"  # data path
     if data_dir == "data_version_2":
         max_daily_delivery_time_each_truck: int = 24 # hours

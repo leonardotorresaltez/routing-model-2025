@@ -12,20 +12,20 @@ class TSPEnv(gym.Env):
         self,
         nodes,                    # Tensor [N, 2]
         source_mask,              # np.array [N] bool
-        initial_truck_positions,  # list[int]
+        truck_starts,  # list[int]
         time_matrix,         
     ):
         super().__init__()
 
         self.time_matrix = time_matrix # Store the actual travel times
-        self.nodes = nodes.clone()
+        self.nodes = nodes.clone() #then enviroment has ther own copy
         self.num_nodes = nodes.shape[0]
 
         self.source_mask = source_mask
         self.target_mask = ~source_mask
 
-        self.initial_truck_positions = list(initial_truck_positions)
-        self.num_trucks = len(initial_truck_positions)
+        self.truck_starts = list(truck_starts) #safe cast for list
+        self.num_trucks = len(truck_starts)
         
         # ---------- Observation space ----------
         self.observation_space = spaces.Dict({
@@ -44,7 +44,7 @@ class TSPEnv(gym.Env):
         })
 
         # ---------- Action space ----------
-        # 
+        # the total size is num_nodes x num_trucks
         self.action_space = spaces.Discrete(self.num_nodes)
 
         self.reset()        
@@ -55,7 +55,7 @@ class TSPEnv(gym.Env):
         
         # reset truck positions (fixed)
         self.truck_positions = np.array(
-            self.initial_truck_positions, dtype=np.int64
+            self.truck_starts, dtype=np.int64
         )   
         
         # visited mask
@@ -64,10 +64,11 @@ class TSPEnv(gym.Env):
         # sources are considered visited
         self.visited_targets[self.source_mask] = True      
         
-        
+        # truck to act
         self.active_truck = 0
         
-        self.tours = [[pos] for pos in self.initial_truck_positions]
+        # tours start with initial positions
+        self.tours = [[pos] for pos in self.truck_starts]
         
         return self._get_obs(), {}
 
@@ -76,7 +77,7 @@ class TSPEnv(gym.Env):
             "nodes": self.nodes.numpy(),
             "is_target": self.target_mask.astype(np.int8),
             "visited_targets": self.visited_targets.astype(np.int8),
-            "current_trucks": self.truck_positions.copy(),
+            "current_trucks": self.truck_positions.copy(), #copy to avoid reference issues
         }
 
     def step(self, action):
@@ -88,25 +89,17 @@ class TSPEnv(gym.Env):
         
         self.tours[truck_id].append(action)
 
-        #dist = torch.norm(
-        #    self.nodes[prev_node] - self.nodes[action]
-        #).item()
         dist = self.time_matrix[prev_node, action]
         reward = -dist
 
+        # Next truck's turn , round robin
         self.active_truck = (self.active_truck + 1) % self.num_trucks
 
         done = self.visited_targets[self.target_mask].all()
+        
+        #TODO if the time is more than max daily time, terminated = True
 
         return self._get_obs(), reward, done, False, {}
     
     
     
-
-#source_indices = torch.arange(5)   
-#print(source_indices)
-##tensor([0, 1])
-#aux = torch.randperm(5)[:3]
-#print(aux)
-#source_indices = source_indices[aux].tolist()
-#print(source_indices)
