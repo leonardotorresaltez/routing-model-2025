@@ -6,6 +6,8 @@ import numpy as np
 import torch
 from gymnasium import spaces
 
+from core.utils.routing import apply_2opt, calculate_route_time
+
 
 class TSPEnv(gym.Env):
     metadata = {"render_modes": []}
@@ -157,6 +159,8 @@ class MDVRP_one_agent_per_truck_env(gym.Env):
         
         self.action_space = spaces.Discrete(self.num_nodes)
         
+        self.use_2opt = False
+        
         # Safe to call now
         self.reset()
         
@@ -250,10 +254,36 @@ class MDVRP_one_agent_per_truck_env(gym.Env):
                 self.truck_active[active_id] = False
 
         terminated = self.visited_mask.all() or not any(self.truck_active.values())
+        info = self._get_info(terminated)
+        
         if terminated:
+            raw_total_time = info["total_time"]
+            optimized_total_time = raw_total_time
+            
+            # keep track of the raw time for the reward signal
+            raw_total_time = info["total_time"]
+            optimized_total_time = raw_total_time
+            
+            # apply 2-opt if requested (Last Episode)
+            if self.use_2opt:
+                print('raw_total_time ', raw_total_time)
+                print('hereeeeeeeeeeeeeeee')
+                optimized_total_time = 0.0
+                for tid, res in info["truck_results"].items():
+                    if res["route"]:
+                        truck_obj = next(t for t in self.trucks if t.id == tid)
+                        # Apply local search
+                        res["route"] = apply_2opt(res["route"], truck_obj.depot_idx, self.time_matrix)
+                        res["time"] = calculate_route_time(res["route"], truck_obj.depot_idx, self.time_matrix)
+                    optimized_total_time += res.get("time", 0.0)
+                print('optimized_total_time ', optimized_total_time)
+            
+            # Add optimized time to info for logging
+            info["optimized_total_time"] = optimized_total_time
+            
             unvisited_count = (self.visited_mask == False).sum().item()
             reward -= (unvisited_count * 500.0) # Heavy penalty # Goal: maximize clients
-        return self._get_obs(), reward, terminated, False, self._get_info(terminated)
+        return self._get_obs(), reward, terminated, False, info
 
     def _has_valid_next_move(self, truck_id):
         """Helper to check if a truck has at least one reachable unvisited customer."""

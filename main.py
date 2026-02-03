@@ -103,6 +103,7 @@ def train_truck_by_truck():
     
     pbar = tqdm(range(cfg.episodes))
     for episode in pbar:
+        env.use_2opt = (episode == cfg.episodes - 1)
         state, _ = env.reset()
         terminated = False
         
@@ -129,18 +130,13 @@ def train_truck_by_truck():
                 state, reward, terminated, truncated, info = env.step(action)
                 if terminated:
                     # Objective 1 & 2: Validate results
-                    total_visited = info["total_visited"]
-                    total_time = info["total_time"] 
+                    total_visited = info.get('total_visited', episode_steps)
+                    total_time = info.get('optimized_total_time', 0.0)  
                 agent.store_reward(reward) # Only store if we acted
                 episode_reward += reward
-            
-            
-            episode_steps += 1
-            
-
-        # info['total_visited'] and info['total_time'] should be calculated by env.step
-        total_visited = info.get('total_visited', episode_steps)
-        total_time = info.get('total_time', 0.0)        
+                        
+            episode_steps += 1            
+             
         batch_rewards.append(episode_reward)
 
         # --- Batch Update ---
@@ -192,7 +188,7 @@ def train_truck_by_truck():
             batch_rewards = [] # Reset batch tracker
 
             # Optional: Save Checkpoint
-            if (episode + 1) % 100 == 0:
+            if (episode + 1) % 50 == 0:
                 pbar.write("\n--- Sample Route Plan ---")
                 for tid, s in list(truck_results.items()): # Show all trucks trucks
                     if s["route"]:

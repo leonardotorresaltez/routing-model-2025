@@ -21,7 +21,7 @@ class Config:
     
     # --- Training ---
     lr: float = 1e-3
-    episodes: int = 500 # 200 # 500
+    episodes: int = 200 # 200 # 500
     log_interval: int = 20
 
 def parse_args() -> Config:
