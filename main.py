@@ -107,8 +107,7 @@ def train():
             print("Total destinations visited: ", total_destinations_visited)
 
             G = create_routing_graph(depots, customers, env.tours, truck_starts)
-            visualize_routing_solution(G, step=episode, title_suffix="Final step", save_path=f"checkpoints/visualization_episode{episode}.html")
-        
+            visualize_routing_solution(G, step=episode, title_suffix="", save_path=f"checkpoints/viz_{cfg.run_name}_ep{episode}.html")
 
         # Logging to W&B
         if cfg.wandb:
