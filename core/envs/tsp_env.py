@@ -8,15 +8,16 @@ from gymnasium import spaces
 class TSPEnv(gym.Env):
     metadata = {"render_modes": []}
 
-    def __init__(
+    def __init__(       
         self,
+        cfg,
         nodes,                    # Tensor [N, 2]
         source_mask,              # np.array [N] bool
         truck_starts,  # list[int]
         time_matrix,         
     ):
         super().__init__()
-
+        self.cfg = cfg
         self.time_matrix = time_matrix # Store the actual travel times
         self.nodes = nodes.clone() #then enviroment has ther own copy
         self.num_nodes = nodes.shape[0]
@@ -47,11 +48,15 @@ class TSPEnv(gym.Env):
         # the total size is num_nodes x num_trucks
         self.action_space = spaces.Discrete(self.num_nodes)
 
+
         self.reset()        
 
     def reset(self, seed=None, options=None):
 
         super().reset(seed=seed)
+        
+        # reset total_time_bytruck
+        self.total_time_bytruck = [0.0 for _ in range(self.num_trucks)]        
         
         # reset truck positions (fixed)
         self.truck_positions = np.array(
@@ -69,6 +74,9 @@ class TSPEnv(gym.Env):
         
         # tours start with initial positions
         self.tours = [[pos] for pos in self.truck_starts]
+
+        # Reset total_time_bytruck
+        self.total_time_bytruck = [0.0 for _ in range(self.num_trucks)]
         
         return self._get_obs(), {}
 
@@ -91,15 +99,27 @@ class TSPEnv(gym.Env):
 
         dist = self.time_matrix[prev_node, action]
         reward = -dist
-
-        # Next truck's turn , round robin
-        self.active_truck = (self.active_truck + 1) % self.num_trucks
-
-        done = self.visited_targets[self.target_mask].all()
         
-        #TODO if the time is more than max daily time, terminated = True
+        # acumulate time for the truck
+        self.total_time_bytruck[truck_id] += dist
 
-        return self._get_obs(), reward, done, False, {}
+        # Buscar el siguiente camión disponible (que no supere 24h)
+        #TODO more options to a better moving between trucks .. choose next truck also use masks 
+        next_truck = (self.active_truck + 1) % self.num_trucks
+        for _ in range(self.num_trucks):
+            if self.total_time_bytruck[next_truck] <= self.cfg.max_daily_delivery_time_each_truck:
+                self.active_truck = next_truck
+                break
+            next_truck = (next_truck + 1) % self.num_trucks
+        
+        # Terminate solo si todos los camiones superaron el límite
+        terminated = all(t > self.cfg.max_daily_delivery_time_each_truck for t in self.total_time_bytruck)        
+        
+        done = self.visited_targets[self.target_mask].all()
+
+
+
+        return self._get_obs(), reward, done, terminated, {}
     
     
     

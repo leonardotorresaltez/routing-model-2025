@@ -66,7 +66,7 @@ class REINFORCEAgent:
             policy_loss.append(-log_prob * R)
             
         self.optimizer.zero_grad()
-        loss = torch.stack(policy_loss).sum()
+        loss = torch.stack(policy_loss).sum() #each policy_loss item is a scalar tensor, needs stack to sum
         loss.backward()
         self.optimizer.step()
         

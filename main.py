@@ -61,6 +61,7 @@ def train():
 
 
     env = TSPEnv(
+        cfg=cfg,
         nodes=nodes,
         source_mask=source_mask,
         truck_starts=truck_starts,
@@ -80,11 +81,13 @@ def train():
         while not done:
             truck_id = env.active_truck
             action = agent.act(obs, truck_id)
-            obs, reward, done, _, _ = env.step(action)
+            obs, reward, done, terminated, _ = env.step(action)
 
             agent.store_reward(reward)
             episode_reward += reward
-            
+
+            if terminated:
+                break
         # Check constraints and compute reward inputs   
         total_destinations_visited, total_time = evaluate_solution(env, data, truck_starts, cfg)                
 

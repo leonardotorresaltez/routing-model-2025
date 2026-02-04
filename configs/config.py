@@ -4,7 +4,7 @@ from dataclasses import dataclass
 @dataclass
 class Config:
     # --- Experiment ---
-    project_name: str = "logistics-rl-poc"
+    project_name: str = "logistics-rl-poc"  
     run_name: str = "default"
     seed: int = 42
     device: str = "cpu"
