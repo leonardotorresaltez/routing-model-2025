@@ -5,24 +5,33 @@ from dataclasses import dataclass
 @dataclass
 class Config:
     # --- Experiment ---
-    project_name: str = "logistics-rl-poc"
+    project_name: str = "routing-model-2025"
     run_name: str = "default"
     seed: int = 42
     device: str = "cpu"
     wandb: bool = True  # Toggle W&B logging
     data_dir: str = "data_version_1"  # data path
-    if data_dir == "data_version_2":
-        max_daily_delivery_time_each_truck: int = 24 # hours
-    else:
-        max_daily_delivery_time_each_truck: int = 1000 # hours
     
     # --- Model ---
     embed_dim: int = 128
+    max_daily_delivery_time_each_truck: int = 24  # hours
     
     # --- Training ---
     lr: float = 1e-3
     episodes: int = 200 # 500
     log_interval: int = 20
+    
+    def __post_init__(self):
+        if self.data_dir == "data_version_2":
+            self.max_daily_delivery_time_each_truck = 24
+            
+        else:
+            self.max_daily_delivery_time_each_truck = 1000
+        
+        # Construct project_name
+        self.project_name = f"{self.project_name}_{self.data_dir}"
+        # Construct Run Name
+        self.run_name = f"{self.data_dir}_lr{self.lr}_sd{self.seed}"
 
 def parse_args() -> Config:
     
@@ -36,16 +45,11 @@ def parse_args() -> Config:
     parser.add_argument("--device", type=str, default=base_cfg.device)
     parser.add_argument("--data_dir", type=str, default=base_cfg.data_dir)
     parser.add_argument("--max_daily_delivery_time_for_each_truck", type=int, default=base_cfg.max_daily_delivery_time_each_truck)
-
-    
     # Flag: --no-wandb to disable logging
     parser.add_argument("--no-wandb", action="store_true", help="Disable W&B")
 
     args = parser.parse_args()
-    
-    # Construct Run Name
-    run_name = f"{args.data_dir}_lr{args.lr}_sd{args.seed}"
-    
+
     return Config(
         lr=args.lr,
         episodes=args.episodes,
@@ -53,6 +57,8 @@ def parse_args() -> Config:
         seed=args.seed,
         device=args.device,
         wandb=not args.no_wandb,
-        run_name=run_name,
-        data_dir=args.data_dir,
+        data_dir=args.data_dir
     )
+    
+
+    
