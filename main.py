@@ -95,7 +95,7 @@ def train():
         loss = agent.update()
         
         # Logging to console
-        if episode % 10 == 0:
+        if episode % 10 == 0 or episode == cfg.episodes - 1:
             print(
                 f"Episode {episode:4d} | "
                 f"Total reward: {episode_reward:.3f}| "
