@@ -1,209 +1,211 @@
-import matplotlib.pyplot as plt
 import networkx as nx
-import numpy as np
-from typing import List, Tuple
-import os
 import plotly.graph_objects as go
+from typing import List
 
+# Assuming these are your custom classes
 from core.utils.data_loader import Customer, Depot, Truck
 
-
 def create_routing_graph(depots: List[Depot], customers: List[Customer], routes: dict, truck_starts: List[int]) -> nx.DiGraph:
-    """Create a NetworkX directed graph representing the routing solution."""
+    """Create a NetworkX directed graph with sequence attributes for animation."""
     G = nx.DiGraph()
     
-    # Add nodes and labels (types)
+    # 1. Add Nodes
     for d in depots:
-        G.add_node(f"D{d.idx}", pos=d.location(), type='depot')
+        G.add_node(f"D{d.idx}", pos=d.location(), type='depot', seq=0)
     for c in customers:
         G.add_node(f"C{c.idx}", pos=c.location(), type='customer', delivered=c.delivered)
     
-    # Add edges based on routes and annotate nodes with SEQUENCE
+    # 2. Add Edges & Annotate Sequence
     for truck_id, route in enumerate(routes):
         if not route: continue
-        
-        # Determine home depot
         d_id = truck_starts[truck_id]
+        stops = route[1:] 
         
-        # The route list usually includes the depot at index 0 or requires offset.
-        # Based on your previous snippet: route = route[1:]
-        # We assume the input 'route' is [Depot_ID, Cust_1, Cust_2, ...] or just [Cust_1, Cust_2...]
-        # Adjusting logic to match your snippet:
-        
-        stops = route[1:] # Skip the first element (assumed to be depot or start marker)
-        
-        # 1. Depot -> First Customer
+        # Depot -> First Customer
         if stops:
-            G.add_edge(f"D{d_id}", f"C{stops[0]}", truck=truck_id)
+            G.add_edge(f"D{d_id}", f"C{stops[0]}", truck=truck_id, edge_seq=1)
         
-        # 2. Customer -> Customer
+        # Customer -> Customer
         for i in range(len(stops)):
-            current_node_id = f"C{stops[i]}"
+            current_node = f"C{stops[i]}"
+            seq_num = i + 1
+            G.nodes[current_node]['seq'] = seq_num
+            G.nodes[current_node]['truck'] = truck_id
             
-            # --- NEW: Store Sequence Order on the Node ---
-            # We use i+1 so the first customer is stop #1, not #0
-            G.nodes[current_node_id]['seq'] = i + 1 
-            G.nodes[current_node_id]['truck'] = truck_id
-            
-            # Add edge to next customer
             if i < len(stops) - 1:
-                next_node_id = f"C{stops[i+1]}"
-                G.add_edge(current_node_id, next_node_id, truck=truck_id)
+                next_node = f"C{stops[i+1]}"
+                G.add_edge(current_node, next_node, truck=truck_id, edge_seq=seq_num + 1)
             
-        # 3. Last Customer -> Depot
+        # Last Customer -> Depot
         if stops:
-            G.add_edge(f"C{stops[-1]}", f"D{d_id}", truck=truck_id)
+            last_seq = len(stops)
+            G.add_edge(f"C{stops[-1]}", f"D{d_id}", truck=truck_id, edge_seq=last_seq + 1)
         
     return G
 
 
-def visualize_routing_solution(G: nx.DiGraph, step: int = 0, title_suffix: str = "", save_path: str = None):
+def visualize_routing_solution(G: nx.DiGraph, step, title_suffix: str = "", save_path: str = None):
     """
-    Visualize the routing solution using Plotly with Sequence Numbers on Nodes.
+    Visualize with a Manual Slider only (No Play button, No Axis Labels).
     """
     pos = nx.get_node_attributes(G, 'pos')
-    node_types = nx.get_node_attributes(G, 'type')
     
-    # Initialize Figure
-    fig = go.Figure()
+    # --- 1. CALCULATE FIXED MAP BOUNDS ---
+    all_x = [p[0] for p in pos.values()]
+    all_y = [p[1] for p in pos.values()]
+    x_padding = (max(all_x) - min(all_x)) * 0.05
+    y_padding = (max(all_y) - min(all_y)) * 0.05
+    x_range = [min(all_x) - x_padding, max(all_x) + x_padding]
+    y_range = [min(all_y) - y_padding, max(all_y) + y_padding]
 
-    # --- 1. PLOT ROUTES (EDGES) ---
+    # --- 2. PRE-PROCESS PATHS ---
     truck_colors = ['#E74C3C', '#9B59B6', '#F1C40F', '#1ABC9C', '#E67E22', '#34495E', 
                     '#2ECC71', '#3498DB', '#95A5A6', '#D35400']
     
     edge_trucks = nx.get_edge_attributes(G, 'truck')
     unique_trucks = sorted(list(set(edge_trucks.values())))
+    
+    truck_paths = {}
+    max_seq_found = 0
 
     for t_id in unique_trucks:
-        # Filter edges for this truck
-        truck_edges = [(u, v) for (u, v), tid in edge_trucks.items() if tid == t_id]
-        if not truck_edges: continue
+        t_edges = [(u, v, data) for u, v, data in G.edges(data=True) if data.get('truck') == t_id]
+        if not t_edges: continue
 
-        # Simple path reconstruction for plotting lines
-        path_nodes = []
-        starts = [u for u, v in truck_edges if u.startswith('D')]
-        if starts:
-            current = starts[0]
-            path_nodes.append(current)
-            edges_pool = list(truck_edges)
-            while edges_pool:
-                nxt_edge = next((e for e in edges_pool if e[0] == current), None)
-                if nxt_edge:
-                    current = nxt_edge[1]
-                    path_nodes.append(current)
-                    edges_pool.remove(nxt_edge)
-                else:
-                    break
-        else:
-            path_nodes = [n for edge in truck_edges for n in edge]
+        t_edges.sort(key=lambda x: x[2].get('edge_seq', 0))
+        
+        start_node = t_edges[0][0]
+        x_vals = [pos[start_node][0]]
+        y_vals = [pos[start_node][1]]
+        seqs = [0]
+        
+        current_seq = 0
+        for u, v, data in t_edges:
+            x_vals.append(pos[v][0])
+            y_vals.append(pos[v][1])
+            s = data.get('edge_seq', current_seq + 1)
+            seqs.append(s)
+            current_seq = s
+            if s > max_seq_found: max_seq_found = s
+            
+        truck_paths[t_id] = {'x': x_vals, 'y': y_vals, 'seqs': seqs, 'color': truck_colors[t_id % len(truck_colors)]}
 
-        # Extract coordinates
-        edge_x = []
-        edge_y = []
-        for node in path_nodes:
-            if node in pos:
-                edge_x.append(pos[node][0])
-                edge_y.append(pos[node][1])
+    # --- 3. PREPARE CUSTOMER LIST (STATIC ORDER) ---
+    customer_nodes = [n for n, d in G.nodes(data=True) if d['type'] == 'customer']
+    customer_nodes.sort() 
+    
+    cust_x = [pos[n][0] for n in customer_nodes]
+    cust_y = [pos[n][1] for n in customer_nodes]
+    cust_seqs = [G.nodes[n].get('seq', 999999) for n in customer_nodes]
 
-        # Add Trace
-        color = truck_colors[t_id % len(truck_colors)]
+    # --- 4. INITIALIZE FIGURE ---
+    fig = go.Figure()
+
+    # A. Trucks (Placeholders)
+    for t_id in unique_trucks:
+        t_data = truck_paths[t_id]
         fig.add_trace(go.Scatter(
-            x=edge_x, y=edge_y,
+            x=[t_data['x'][0]], y=[t_data['y'][0]], 
             mode='lines+markers',
-            line=dict(width=2, color=color),
-            marker=dict(size=4, color=color),
-            name=f'Truck {t_id}',
-            opacity=0.8,
-            legendgroup=f'group_{t_id}'
+            line=dict(width=3, color=t_data['color']),
+            marker=dict(size=6, color=t_data['color']),
+            name=f'Truck {t_id}'
         ))
 
-    # --- 2. PLOT NODES WITH SEQUENCE NUMBERS ---
+    # B. Depots (Static Trace)
+    depots = [n for n, d in G.nodes(data=True) if d['type'] == 'depot']
+    fig.add_trace(go.Scatter(
+        x=[pos[n][0] for n in depots], y=[pos[n][1] for n in depots],
+        mode='markers+text',
+        marker=dict(symbol='star', size=15, color='gold', line=dict(width=1, color='black')),
+        text=[n for n in depots], textposition="top center",
+        name='Depot'
+    ))
+
+    # C. ALL Customers (Single Dynamic Trace)
+    fig.add_trace(go.Scatter(
+        x=cust_x, y=cust_y,
+        mode='markers+text',
+        marker=dict(
+            size=12, 
+            line=dict(width=1, color='black'),
+            color=['#3498DB'] * len(customer_nodes)
+        ),
+        text=[''] * len(customer_nodes),
+        textfont=dict(color='black', size=10, family='Arial Black'),
+        name='Customers'
+    ))
+
+    # --- 5. CREATE FRAMES ---
+    frames = []
+    COLOR_DELIVERED = '#2ECC71' # Green
+    COLOR_UNVISITED = '#3498DB' # Blue
     
-    def add_node_trace(node_list, color, symbol, size, label_prefix):
-        if not node_list: return
+    for step in range(1, max_seq_found + 1):
+        frame_data = []
         
-        x_vals = [pos[n][0] for n in node_list]
-        y_vals = [pos[n][1] for n in node_list]
-        
-        # --- MODIFIED TEXT GENERATION ---
-        display_texts = []
-        hover_texts = []
-        
-        for n in node_list:
-            # Check if this node has a sequence number assigned
-            seq = G.nodes[n].get('seq')
-            truck = G.nodes[n].get('truck')
-            
-            if seq is not None:
-                # If it has a sequence, show the number (e.g., "1", "2")
-                # We also assume if it has a sequence, it belongs to a truck
-                display_texts.append(str(seq))
-                hover_texts.append(f"{label_prefix}: {n}<br>Truck: {truck}<br>Stop: #{seq}")
+        # 1. Update Trucks
+        for t_id in unique_trucks:
+            path = truck_paths[t_id]
+            filtered = [(x, y) for x, y, s in zip(path['x'], path['y'], path['seqs']) if s <= step]
+            if filtered:
+                fx, fy = zip(*filtered)
+                frame_data.append(go.Scatter(x=fx, y=fy))
             else:
-                # Fallback for unvisited or depots: show the Node ID
-                display_texts.append(n)
-                hover_texts.append(f"{label_prefix}: {n}")
+                frame_data.append(go.Scatter(x=[], y=[]))
+        
+        # 2. Depot (Unchanged)
+        frame_data.append(go.Scatter()) 
+        
+        # 3. Update Customers
+        current_colors = []
+        current_texts = []
+        
+        for seq in cust_seqs:
+            if seq <= step:
+                current_colors.append(COLOR_DELIVERED)
+                current_texts.append(str(seq))
+            else:
+                current_colors.append(COLOR_UNVISITED)
+                current_texts.append("")
 
-        fig.add_trace(go.Scatter(
-            x=x_vals, y=y_vals,
-            mode='markers+text', # 'text' enables the labels on top
-            marker=dict(symbol=symbol, size=size, color=color, line=dict(width=1, color='Black')),
-            
-            text=display_texts, # This is what appears ON the map
-            textposition="top center", # Places text strictly above the marker
-            textfont=dict(size=10, color="black", family="Arial Black"), # Bold font for readability
-            
-            hovertext=hover_texts, # This appears when you hover mouse
-            hoverinfo="text",
-            name=label_prefix
+        frame_data.append(go.Scatter(marker=dict(color=current_colors), text=current_texts))
+        
+        frames.append(go.Frame(data=frame_data, name=str(step)))
+
+    fig.frames = frames
+
+    # --- 6. LAYOUT (CLEANED) ---
+    slider_steps = []
+    for step in range(1, max_seq_found + 1):
+        slider_steps.append(dict(
+            method="animate",
+            args=[[str(step)], dict(mode="immediate", frame=dict(duration=300, redraw=True), transition=dict(duration=0))],
+            label=str(step)
         ))
-
-    # Identify node groups
-    depots = [n for n, t in node_types.items() if t == 'depot']
-    delivered = [n for n, t in node_types.items() if t == 'customer' and G.nodes[n].get('delivered', False)]
-    unvisited = [n for n, t in node_types.items() if t == 'customer' and not G.nodes[n].get('delivered', False)]
-
-    add_node_trace(depots, 'gold', 'star', 15, 'Depot')
-    add_node_trace(delivered, '#2ECC71', 'circle', 12, 'Delivered')
-    add_node_trace(unvisited, '#3498DB', 'circle', 10, 'Unvisited')
-
-    # --- 3. DASHBOARD STATS ---
-    total_cust = len(delivered) + len(unvisited)
-    perc_deliv = (len(delivered) / total_cust * 100) if total_cust > 0 else 0
-    
-    stats_text = (
-        f"<b>Step: {step}</b><br>"
-        f"Delivered: {len(delivered)}/{total_cust} ({perc_deliv:.1f}%)<br>"
-        f"Trucks Active: {len(unique_trucks)}"
-    )
-
-    fig.add_annotation(
-        text=stats_text,
-        align='left',
-        showarrow=False,
-        xref='paper', yref='paper',
-        x=0.01, y=0.99,
-        bgcolor="white",
-        bordercolor="black",
-        borderwidth=1,
-        opacity=0.9
-    )
 
     fig.update_layout(
-        title=dict(text=f"Routing Solution {title_suffix}", x=0.5),
-        showlegend=True,
-        legend=dict(title="Legend", itemsizing='constant'),
-        xaxis=dict(showgrid=True, zeroline=False, showticklabels=False, title="X"),
-        yaxis=dict(showgrid=True, zeroline=False, showticklabels=False, title="Y"),
-        autosize=True, 
+        title=f"Routing Progression {title_suffix}",
+        
+        # REMOVED TITLES HERE
+        xaxis=dict(showgrid=True, zeroline=False, showticklabels=False, range=x_range),
+        yaxis=dict(showgrid=True, zeroline=False, showticklabels=False, range=y_range),
+        
         plot_bgcolor='#F0F2F6',
-        margin=dict(l=20, r=20, t=50, b=20)
+        
+        # REMOVED UPDATEMENUS (Play Button)
+        
+        sliders=[dict(
+            active=0,
+            currentvalue={"prefix": "Step: "},
+            pad={"t": 50},
+            steps=slider_steps
+        )]
     )
 
     if save_path:
-        if not save_path.endswith('.html'):
-            save_path = save_path.rsplit('.', 1)[0] + '.html'
+        if not save_path.endswith('.html'): save_path += '.html'
         fig.write_html(save_path, include_plotlyjs='cdn', full_html=True)
-        print(f"Saved interactive visualization to {save_path}")
+        print(f"Saved interactive animation to {save_path}")
     else:
-        fig.show(config={'responsive': True})
+        fig.show()
