@@ -83,7 +83,7 @@ def train():
                 episode_reward += reward.item()
 
         # Check constraints and compute reward inputs   
-        total_destinations_visited, total_time = evaluate_solution(env, data, truck_starts, cfg)      
+        total_destinations_visited, total_time = evaluate_solution(env.tours, data["time_matrix"], truck_starts, cfg.max_daily_delivery_time_each_truck)      
         
         for customer in customers:
             if customer.idx in [node for tour in env.tours for node in tour]:

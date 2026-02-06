@@ -114,6 +114,7 @@ class MDVRPDataLoader:
             "time_matrix": time_tensor,
             "depots": depots,
             "customers": customers,
+            "customers_df": customer_df,
             "trucks": trucks,
             "num_nodes": num_nodes,
             "node_to_idx": self.node_to_idx,

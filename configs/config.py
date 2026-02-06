@@ -26,7 +26,7 @@ class Config:
             self.max_daily_delivery_time_each_truck = 24
             
         else:
-            self.max_daily_delivery_time_each_truck = 1000
+            self.max_daily_delivery_time_each_truck = 12
         
         # Construct project_name
         self.project_name = f"{self.project_name}_{self.data_dir}"
