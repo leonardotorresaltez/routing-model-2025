@@ -140,7 +140,7 @@ class MDVRPEnv(gym.Env):
 
 
 class MDVRP_one_agent_per_truck_env(gym.Env):
-    def __init__(self, cfg, data):
+    def __init__(self, cfg, data, truck_starts):
         super().__init__()
         self.cfg = cfg
         self.node_features = data["node_features"]
@@ -149,16 +149,14 @@ class MDVRP_one_agent_per_truck_env(gym.Env):
         self.depots = data["depots"]
         self.customers = data["customers"]
         self.num_nodes = data["num_nodes"]
+        self.truck_starts = truck_starts
 
         # Define the ID mapping BEFORE calling reset()
         self.truck_id_to_idx = {t.id: i for i, t in enumerate(self.trucks)}
-
         self.observation_space = spaces.Dict({
             "node_features": spaces.Box(0.0, 1.0, (self.num_nodes, self.num_nodes), dtype=np.float32)
-        })
-        
-        self.action_space = spaces.Discrete(self.num_nodes)
-        
+        })        
+        self.action_space = spaces.Discrete(self.num_nodes)        
         self.use_2opt = False
         
         # Safe to call now
@@ -204,12 +202,25 @@ class MDVRP_one_agent_per_truck_env(gym.Env):
             self.visited_mask[d.idx] = True
         
         self.truck_active = {t.id: True for t in self.trucks}            
+       
+        
+        self.visited = torch.zeros(self.num_nodes, dtype=torch.bool)
+        self.current_positions = self.truck_starts.copy()
+        
+        # Mark all depots as visited for all trucks
+        for pos in self.truck_starts:
+            self.visited[pos] = True
+        
+        self.tours = [[pos] for pos in self.truck_starts]       
+        
+               
         return self._get_obs(), {}
 
     def step(self, action):
-        active_id = self._get_next_truck_id()
-        truck_state = self.truck_states[active_id]
-        truck_obj = next(t for t in self.trucks if t.id == active_id)
+        truck_id = self._get_next_truck_id()
+        truck_state = self.truck_states[truck_id]
+        truck_obj = next(t for t in self.trucks if t.id == truck_id)
+        
         
         prev_node = truck_state["current_node"]
         travel_time = self.time_matrix[prev_node, action].item()
@@ -228,6 +239,8 @@ class MDVRP_one_agent_per_truck_env(gym.Env):
             self.visited_mask[action] = True
             # Goal: Minimize time (-travel_time)
             reward = - travel_time # FIXME
+            self.visited[action] = True # same as visited_mask FIXME
+            self.tours[self.truck_id_to_idx[truck_id]].append(action)
         else: # safety code, it should NEVER be reached out
             # INVALID MOVE: This truck's day ends at its CURRENT location
             print('holaaaaaaaa')
@@ -238,12 +251,12 @@ class MDVRP_one_agent_per_truck_env(gym.Env):
             truck_state["route"].append(truck_obj.depot_idx)
             
             # RETIRE THE TRUCK
-            self.truck_active[active_id] = False
+            self.truck_active[truck_id] = False
             reward = -time_home_from_prev - 50.0 # Heavy penalty for invalid choice
             
         # Check if truck should be retired anyway (no more FUTURE moves possible)
-        if self.truck_active[active_id]:
-            if not self._has_valid_next_move(active_id):
+        if self.truck_active[truck_id]:
+            if not self._has_valid_next_move(truck_id):
                 # Only append depot if we aren't already there
                 if truck_state["current_node"] != truck_obj.depot_idx:
                     h_time = self.time_matrix[truck_state["current_node"], truck_obj.depot_idx].item()
@@ -251,7 +264,7 @@ class MDVRP_one_agent_per_truck_env(gym.Env):
                     truck_state["current_node"] = truck_obj.depot_idx
                     truck_state["route"].append(truck_obj.depot_idx)
     
-                self.truck_active[active_id] = False
+                self.truck_active[truck_id] = False
 
         terminated = self.visited_mask.all() or not any(self.truck_active.values())
         info = self._get_info(terminated)
@@ -310,8 +323,8 @@ class MDVRP_one_agent_per_truck_env(gym.Env):
 
 
     def _get_obs(self):
-        active_id = self._get_next_truck_id()
-        if active_id is None:
+        truck_id = self._get_next_truck_id()
+        if truck_id is None:
             return {"active_truck_id": None}
         
         
@@ -324,10 +337,10 @@ class MDVRP_one_agent_per_truck_env(gym.Env):
         # truck_obj: Retrieves the static properties of the truck (defined in your data files). This is primarily used to find the truck's depot_idx, so the model can calculate how far away "home" is from any given customer.
         # TRUCK IDENTITY (indexed)
         truck_identity = torch.zeros(num_trucks)
-        idx = self.truck_id_to_idx[active_id] # Map the data ID to a 0-based vector index
+        idx = self.truck_id_to_idx[truck_id] # Map the data ID to a 0-based vector index
         truck_identity[idx] = 1.0
-        truck_state = self.truck_states[active_id]
-        truck_obj = next(t for t in self.trucks if t.id == active_id)
+        truck_state = self.truck_states[truck_id]
+        truck_obj = next(t for t in self.trucks if t.id == truck_id)
 
         # GLOBAL FLEET STATUS
         limit = self.cfg.max_daily_delivery_time_each_truck
@@ -346,7 +359,7 @@ class MDVRP_one_agent_per_truck_env(gym.Env):
             "node_features": self.node_features.clone(),
             "current_node": truck_state["current_node"],
             "current_time": truck_state["ready_time"],
-            "active_truck_id": active_id,
+            "active_truck_id": truck_id,
             "visited_mask": self.visited_mask.clone(),
             "depot_dist": depot_dist,
             "fleet_status": fleet_ready_times,

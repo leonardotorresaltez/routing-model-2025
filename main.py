@@ -10,6 +10,9 @@ from core.envs.tsp_env import MDVRP_one_agent_per_truck_env, MDVRPEnv
 from core.models.agent import (MDVRP_one_agent_per_truck_REINFORCE_agent,
                                MDVRPREINFORCEAgent)
 from core.utils.data_loader import MDVRPDataLoader
+from core.utils.evaluation_utils import evaluate_solution
+from core.utils.visualization_utils_plotly import (create_routing_graph,
+                                                   visualize_routing_solution)
 
 
 def train_one_episode_one_step_all_fleet():
@@ -25,7 +28,10 @@ def train_one_episode_one_step_all_fleet():
     
     # Load Real Data
     loader = MDVRPDataLoader(data_dir=cfg.data_dir)
-    data = loader.load_data()
+    data = loader.load_data()    
+    customers = data["customers"]
+    depots = data["depots"]
+    truck_starts = [truck.depot_idx for truck in data["trucks"]]
 
     if cfg.wandb:
         wandb.init(project="mdvrp-rl", name=cfg.run_name, config=vars(cfg))
@@ -33,6 +39,7 @@ def train_one_episode_one_step_all_fleet():
     env = MDVRPEnv(cfg, data)
     agent = MDVRPREINFORCEAgent(cfg, data)
     batch_rewards = []
+    episode_reward = 0.0
 
     print(f"--> STARTING RUN: {cfg.run_name}")
     pbar = tqdm(range(cfg.episodes))
@@ -47,6 +54,7 @@ def train_one_episode_one_step_all_fleet():
         
         agent.store_reward(reward)
         batch_rewards.append(reward) # Track rewards for this batch
+        episode_reward += reward
     
         if (episode + 1) % 10 == 0:
             
@@ -75,6 +83,10 @@ def train_one_episode_one_step_all_fleet():
                 })
             batch_rewards = [] # Reset for next batch
             
+            G = create_routing_graph(depots, customers, env.tours, truck_starts)
+            visualize_routing_solution(G, step=episode, title_suffix="Final step", save_path=f"checkpoints/visualization_episode{episode}.html")
+        
+            
 
     torch.save(agent.policy.state_dict(), f"checkpoints/mdvrp_{cfg.run_name}.pt")
     if cfg.wandb: wandb.finish()
@@ -91,14 +103,18 @@ def train_truck_by_truck():
     
     loader = MDVRPDataLoader(data_dir=cfg.data_dir)
     data = loader.load_data()
+    customers = data["customers"]
+    depots = data["depots"]
+    truck_starts = [truck.depot_idx for truck in data["trucks"]]
 
     if cfg.wandb:
         wandb.init(project="mdvrp-rl", name=cfg.run_name, config=vars(cfg))
 
-    env = MDVRP_one_agent_per_truck_env(cfg, data)
+    env = MDVRP_one_agent_per_truck_env(cfg, data, truck_starts)
     agent = MDVRP_one_agent_per_truck_REINFORCE_agent(cfg, data)
     
     batch_rewards = []
+    episode_reward = 0
     print(f"--> STARTING RUN: {cfg.run_name}")
     
     pbar = tqdm(range(cfg.episodes))
@@ -186,6 +202,11 @@ def train_truck_by_truck():
             
             
             batch_rewards = [] # Reset batch tracker
+            
+            G = create_routing_graph(depots, customers, env.tours, truck_starts)
+            visualize_routing_solution(G, step=episode, title_suffix="Final step", save_path=f"checkpoints/visualization_episode{episode}.html")
+        
+            
 
             # Optional: Save Checkpoint
             if (episode + 1) % 50 == 0:

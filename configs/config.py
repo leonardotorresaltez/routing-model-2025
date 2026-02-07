@@ -21,7 +21,7 @@ class Config:
     
     # --- Training ---
     lr: float = 1e-3
-    episodes: int = 200 # 200 # 500
+    episodes: int = 300 # 200 # 500
     log_interval: int = 20
 
 def parse_args() -> Config:
@@ -44,7 +44,7 @@ def parse_args() -> Config:
     args = parser.parse_args()
     
     # Construct Run Name
-    run_name = f"{args.data_dir}_lr{args.lr}_sd{args.seed}"
+    run_name = f"cgp_{args.data_dir}_lr{args.lr}_sd{args.seed}_"
     
     return Config(
         lr=args.lr,

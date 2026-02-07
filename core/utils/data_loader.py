@@ -16,6 +16,10 @@ class Customer:
     lat: float
     lon: float
     road_access_type: str
+    delivered: bool = False
+
+    def location(self) -> Tuple[float, float]:
+        return (self.lat, self.lon)
     
 @dataclass
 class Truck:
@@ -38,6 +42,9 @@ class Depot:
     lat: float
     lon: float
     truck_fleet: List[int] = field(default_factory=list)
+
+    def location(self) -> Tuple[float, float]:
+        return (self.lat, self.lon)
 
 class MDVRPDataLoader:
     def __init__(self, data_dir=None):
