@@ -108,7 +108,7 @@ def train_truck_by_truck():
     truck_starts = [truck.depot_idx for truck in data["trucks"]]
 
     if cfg.wandb:
-        wandb.init(project="mdvrp-rl", name=cfg.run_name, config=vars(cfg))
+        wandb.init(project=cfg.project_name, name=cfg.run_name, config=vars(cfg))
 
     env = MDVRP_one_agent_per_truck_env(cfg, data, truck_starts)
     agent = MDVRP_one_agent_per_truck_REINFORCE_agent(cfg, data)
@@ -149,7 +149,7 @@ def train_truck_by_truck():
                     total_visited = info.get('total_visited', episode_steps)
                     total_time = info.get('optimized_total_time', 0.0)  
                 agent.store_reward(reward) # Only store if we acted
-                episode_reward += reward
+                episode_reward += reward # FIXME, Jorge says we should update the reward at each step
                         
             episode_steps += 1            
              

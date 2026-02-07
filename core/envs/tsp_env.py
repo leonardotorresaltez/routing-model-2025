@@ -217,7 +217,7 @@ class MDVRP_one_agent_per_truck_env(gym.Env):
         return self._get_obs(), {}
 
     def step(self, action):
-        truck_id = self._get_next_truck_id()
+        truck_id = self._get_next_truck_id() # FIXME, not correct. 
         truck_state = self.truck_states[truck_id]
         truck_obj = next(t for t in self.trucks if t.id == truck_id)
         
