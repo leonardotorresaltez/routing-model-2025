@@ -56,7 +56,7 @@ class TSPEnv(gym.Env):
         super().reset(seed=seed)
         
         # reset total_time_bytruck
-        self.total_time_bytruck = [0.0 for _ in range(self.num_trucks)]        
+        #self.total_time_bytruck = [0.0 for _ in range(self.num_trucks)]        
         
         # reset truck positions (fixed)
         self.truck_positions = np.array(
@@ -75,8 +75,7 @@ class TSPEnv(gym.Env):
         # tours start with initial positions
         self.tours = [[pos] for pos in self.truck_starts]
 
-        # Reset total_time_bytruck
-        self.total_time_bytruck = [0.0 for _ in range(self.num_trucks)]
+
         
         return self._get_obs(), {}
 
@@ -101,20 +100,20 @@ class TSPEnv(gym.Env):
         reward = -dist
         
         # acumulate time for the truck
-        self.total_time_bytruck[truck_id] += dist
+        #self.total_time_bytruck[truck_id] += dist
 
         # Buscar el siguiente camión disponible (que no supere 24h)
         #TODO more options to a better moving between trucks .. choose next truck also use masks 
-        next_truck = (self.active_truck + 1) % self.num_trucks
-        for _ in range(self.num_trucks):
-            if self.total_time_bytruck[next_truck] <= self.cfg.max_daily_delivery_time_each_truck:
-                self.active_truck = next_truck
-                break
-            next_truck = (next_truck + 1) % self.num_trucks
-        
-        # Terminate solo si todos los camiones superaron el límite
-        terminated = all(t > self.cfg.max_daily_delivery_time_each_truck for t in self.total_time_bytruck)        
-        
+        self.active_truck = (self.active_truck + 1) % self.num_trucks
+#        for _ in range(self.num_trucks):
+#            if self.total_time_bytruck[next_truck] <= self.cfg.max_daily_delivery_time_each_truck:
+#                self.active_truck = next_truck
+#                break
+#            next_truck = (next_truck + 1) % self.num_trucks
+#        
+#        # Terminate solo si todos los camiones superaron el límite
+#        terminated = all(t > self.cfg.max_daily_delivery_time_each_truck for t in self.total_time_bytruck)        
+        terminated = False
         done = self.visited_targets[self.target_mask].all()
 
 

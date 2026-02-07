@@ -86,8 +86,8 @@ def train():
             agent.store_reward(reward)
             episode_reward += reward
 
-            if terminated:
-                break
+            #if terminated:
+            #    break
         # Check constraints and compute reward inputs   
         total_destinations_visited, total_time = evaluate_solution(env, data, truck_starts, cfg)                
 
