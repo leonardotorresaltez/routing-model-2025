@@ -6,6 +6,7 @@ This folder contains the datasets used by the routing model, generated from `ini
 
 - **`data_version_1/`**: Scenario with 50 customers, 1 depot, and 5 trucks.
 - **`data_version_2/`**: Scenario with 500 customers, 5 depots, and 50 trucks.
+- **`data_version_3/`**: Scenario with 10 customers, 1 depots, and 2 trucks.
 - **`initial_data_info.xlsx`**: Source file containing raw coordinates and node information.
 - **`data_generator.ipynb`**: Logic for selecting nodes and calculating distance/time matrices.
 
