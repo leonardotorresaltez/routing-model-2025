@@ -3,7 +3,7 @@ import networkx as nx
 import numpy as np
 from typing import List, Tuple
 
-from core.utils.data_loader import Customer, Depot, Truck
+from loader_lib.data_loader import Customer, Depot, Truck
 
 def create_routing_graph(depots: List[Depot], customers: List[Customer], routes: dict, truck_starts: List[int]) -> nx.DiGraph:
     """Create a NetworkX directed graph representing the routing solution as suggested by Jorge"""

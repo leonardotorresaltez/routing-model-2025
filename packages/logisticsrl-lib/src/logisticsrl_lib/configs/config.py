@@ -31,7 +31,7 @@ class Config:
         # Construct project_name
         self.project_name = f"{self.project_name}_{self.data_dir}"
         # Construct Run Name
-        self.run_name = f"{self.data_dir}_lr{self.lr}_sd{self.seed}"
+        self.run_name = f"lr{self.lr}_sd{self.seed}"
 
 def parse_args() -> Config:
     

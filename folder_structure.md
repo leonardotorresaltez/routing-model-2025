@@ -4,33 +4,56 @@ This repository contains a modular Reinforcement Learning framework designed to 
 
 ## Project Structure
 ```
-logistics_rl/
-├── checkpoints/             # Saved model weights (.pt files)
-├── configs/
-│   ├── __init__.py
-│   └── config.py            # Hyperparameters & CLI parsing
-├── core/
-│   ├── envs/
-│   │   ├── __init__.py
-│   │   └── tsp_env.py       # Gymnasium Environment logic
-│   └── models/
-│       ├── __init__.py
-│       ├── agent.py         # Weights update logic
-│       └── policy.py        # Attention/Pointer Network architecture
-├── data/                    
-├── main.py                  # Entry point for single training runs
-├── run_experiments.py       # Grid search orchestrator
-├── README.md                # Project documentation
-└── requirements.txt         # Dependencies
+routing-model-2025/
+├── checkpoints/ # Pesos de modelos entrenados
+├── data/ # Datos de entrada y salida
+├── notebooks/ # Jupyter notebooks de experimentación
+├── packages/
+│ ├── logisticsrl-lib/
+│ │ └── src/logisticsrl_lib/
+│ │ ├── main.py # Script principal de entrenamiento
+│ │ ├── configs/
+│ │ │ └── config.py # Configuración y argumentos
+│ │ └── reinforcelearning/
+│ │ ├── agent.py # Lógica del agente RL
+│ │ ├── policy.py # Arquitectura de la policy
+│ │ └── tsp_env.py # Entorno Gymnasium
+│ ├── loader-lib/
+│ │ └── src/loader_lib/
+│ │ └── data_loader.py # Carga y procesamiento de datos
+│ └── common-lib/
+│ └── src/common_lib/
+│ ├── evaluation_utils.py # Utilidades de evaluación
+│ └── visualization_utils_plotly.py # Visualización de rutas
+├── run_experiments.py # Orquestador de experimentos/grid search
+├── requirements.txt # Dependencias para entorno base
+├── pyproject.toml # Configuración de Poetry y scripts
+├── README.md # Documentación principal
+└── wandb/ # Logs de experimentos W&B
 ```
 ---
 
 ## Installation & Setup
 
+
+0. **Install Poetry**
+   Poetry is the recommended dependency manager for this project. You can install it by following the official documentation:
+   - **Mac/Linux:**
+     ```bash
+     curl -sSL https://install.python-poetry.org | python3 -
+     ```
+   - **Windows (PowerShell):**
+     ```powershell
+     (Invoke-WebRequest -Uri https://install.python-poetry.org -UseBasicParsing).Content | python -
+     ```
+   More details and alternative methods: https://python-poetry.org/docs/#installation
+
 1. **Install Dependencies**
    Use the provided requirements file to set up your environment:
    ```bash
-   pip install -r requirements.txt
+cd packages/logisticsrl-lib && poetry install
+cd ../loader-lib && poetry install
+cd ../common-lib && poetry install
    ```
 
 2. **Initialize Weights & Biases (Optional)**
@@ -39,39 +62,25 @@ logistics_rl/
    wandb login
    ```
 
----
+3. **Update dependencies after adding a new package**
+   If you add a new dependency to any of the Poetry-managed packages, run:
+   ```bash
+   poetry update
+   ```
+   inside the corresponding package directory (e.g., `packages/logisticsrl-lib`). This will update the lock file and install the new dependency.
 
-## How to Run
+4. **Run the training script with Poetry**
+   To execute the main training script using Poetry's script system, run:
+   ```bash
+   poetry run train
+   ```
+   This will call the `train`  function defined in `main.py` of the `logisticsrl-lib` package, ensuring the correct environment and dependencies are used.   
 
-### 1. Single Experiment
-To run a specific configuration, use `main.py`. You can override defaults using flags:
-```bash
-python main.py --nodes 20 --lr 0.001 --episodes 1000
-```
+5. **Poetry, virtual environments, and Visual Studio Code**
+   Poetry automatically creates and manages a virtual environment (venv) for each project. To use this venv in Visual Studio Code:
+   - Run `poetry env info --path` inside your package directory to get the path to the Poetry-managed venv.
+   - In VS Code, open the Command Palette (`Ctrl+Shift+P` or `Cmd+Shift+P`), search for "Python: Select Interpreter", and choose the interpreter that matches the path shown by Poetry.
+   - This ensures that scripts and notebooks use the correct environment with all dependencies installed by Poetry.
 
-### 2. Run a Grid Search (Loop)
-To test multiple combinations of parameters automatically, use the orchestrator:
-```bash
-python run_experiments.py
-```
-
-### 3. Disable Tracking
-If you want to run a quick test without logging to W&B:
-```bash
-python main.py --no-wandb
-```
-
----
-
-## Model Architecture
-The policy uses a **Pointer Network** approach. Instead of traditional attention that "mixes" values, this model uses the attention scores directly as a probability distribution over the available nodes.
-
-1. **Encoder:** Embeds (x, y) coordinates into a d-dimensional space.
-2. **Query:** The embedding of the current location.
-3. **Keys:** The embeddings of all possible destination nodes.
-4. **Masking:** A boolean mask is applied to ensure the agent never visits a node twice.
 
 ---
-
-## Monitoring Results
-All metrics (Reward, Loss, Episode Length) are sent to **Weights & Biases**. You can compare different runs (e.g., Learning Rate 0.001 vs 0.0001) directly in your web browser.

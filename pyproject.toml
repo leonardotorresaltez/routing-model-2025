@@ -1,0 +1,36 @@
+[project]
+name = "routing-model-2025"
+version = "0.1.0"
+description = ""
+authors = [
+    {name = "leonardo",email = "leonardo.torres.altez@gmail.com"}
+]
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = [
+  # Referenciamos los subproyectos como dependencias
+    "common-lib",
+    "loader-lib",
+    "logisticsrl-lib"
+]
+
+
+[tool.poetry]
+# Esto permite que Poetry encuentre los códigos fuente
+packages = [
+    { include = "common-lib", from = "packages" },
+    { include = "loader-lib", from = "packages" },
+    { include = "logisticsrl-lib", from = "packages" }
+]
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.0.0"
+
+[tool.poetry.dependencies]
+# Definimos las rutas locales
+common-lib = { path = "packages/common-lib", develop = true }
+loader-lib = { path = "packages/loader-lib", develop = true }
+logisticsrl-lib = { path = "packages/logisticsrl-lib", develop = true }
+
+[tool.poetry.scripts]
+train = "logisticsrl_lib.main:train"

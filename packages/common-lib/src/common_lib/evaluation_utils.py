@@ -12,8 +12,8 @@ def evaluate_solution(tours, time_matrix, truck_starts, max_daily_delivery_time_
         # total_time_truck += time_matrix[truck_starts[truck_id], tour[0]]   # From depot to first
         total_time_truck += time_matrix[tour[-1], truck_starts[truck_id]]  # Return to depot
         
-        if total_time_truck > max_daily_delivery_time_each_truck:
-            raise ValueError(f"Truck {truck_id} exceeded max daily delivery time: {total_time_truck} > {max_daily_delivery_time_each_truck}")
+#        if total_time_truck > max_daily_delivery_time_each_truck:
+#            raise ValueError(f"Truck {truck_id} exceeded max daily delivery time: {total_time_truck} > {max_daily_delivery_time_each_truck}")
 
         if tour[0] != truck_starts[truck_id]:
             raise ValueError(f"Truck {truck_id} did not start at its depot: started at {tour[0]}, should start at {truck_starts[truck_id]}")

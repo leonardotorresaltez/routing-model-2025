@@ -3,7 +3,7 @@ import plotly.graph_objects as go
 from typing import List
 
 # Assuming these are your custom classes
-from core.utils.data_loader import Customer, Depot, Truck
+from loader_lib.data_loader import Customer, Depot, Truck
 
 def create_routing_graph(depots: List[Depot], customers: List[Customer], routes: dict, truck_starts: List[int]) -> nx.DiGraph:
     """Create a NetworkX directed graph with sequence attributes for animation."""

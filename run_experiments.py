@@ -2,6 +2,7 @@ import subprocess
 import sys
 import itertools
 
+#TODO refactor this class after poetry
 # --- DEFINITION OF EXPERIMENTS ---
 # Add whatever values you want to test here
 param_grid = {

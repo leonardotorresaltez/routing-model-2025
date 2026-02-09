@@ -1,7 +1,7 @@
 import torch
 import torch.optim as optim
 
-from core.models.policy import AttentionPolicy, GraphPointerPolicy
+from .policy import AttentionPolicy, GraphPointerPolicy
 
 
 class REINFORCEAgent:

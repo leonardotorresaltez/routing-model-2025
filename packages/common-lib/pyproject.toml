@@ -1,0 +1,18 @@
+[project]
+name = "common-lib"
+version = "0.1.0"
+description = "Lógica compartida"
+requires-python = ">=3.9"
+dependencies = [
+    "matplotlib",
+    "plotly"
+]
+
+
+
+[build-system]
+requires = ["poetry-core>=2.0.0"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.poetry.dependencies]
+loader-lib = { path = "../loader-lib", develop = true }
