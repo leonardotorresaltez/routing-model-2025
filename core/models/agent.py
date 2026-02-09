@@ -10,25 +10,7 @@ from core.models.policy import  GraphPointerPolicy
 # ---------------------------- 
 class REINFORCEAgent:
 
-    def _apply_time_constraints(self, active_truck, trucks_dict_state, visited_mask):
-            """
-            Modifica la máscara visited_mask para enmascarar también los nodos a los que, si el camión fuera, superaría 24h de tiempo total.
-            """
-            mask = visited_mask.copy()  # Start with the original visited mask (targets already visited)
-            # Obtener el estado actual del camión
-            truck_state = trucks_dict_state[active_truck]
-            current_node = truck_state.tour[-1] if truck_state.tour else 0
-            # Se asume que tienes acceso a la matriz de tiempos (debes pasarla si no está en self)
-            # Aquí se asume que self.cfg.time_matrix existe y es un np.array o torch.Tensor
-            time_matrix = self.time_matrix
-            num_nodes = time_matrix.shape[0]
-            for next_node in range(num_nodes):
-                if mask[next_node]:
-                    continue  # Ya está enmascarado
-                travel_time = time_matrix[current_node, next_node]
-                if truck_state.total_time + travel_time > 24.0:
-                    mask[next_node] = True
-            return mask
+
         
     def __init__(self, cfg, time_matrix):
         self.cfg = cfg
@@ -64,7 +46,7 @@ class REINFORCEAgent:
         visited_enriched = torch.tensor(visited_enriched, dtype=torch.bool).to(self.cfg.device)
         
         current_node = obs["current_trucks"][active_truck]
-        np.set_printoptions(threshold=np.inf)
+        #np.set_printoptions(threshold=np.inf)
 
        
         action_result = -1
@@ -135,3 +117,24 @@ class REINFORCEAgent:
             #print("returns:", returns)
             #print("policy_loss:", policy_loss)
         return losint
+    
+    def _apply_time_constraints(self, active_truck, trucks_dict_state, visited_mask):
+            """
+            Modifica la máscara visited_mask para enmascarar también los nodos a los que, si el camión fuera, superaría 24h de tiempo total.
+            """
+            mask = visited_mask.copy()  # Start with the original visited mask (targets already visited)
+            # Obtener el estado actual del camión
+            truck_state = trucks_dict_state[active_truck]
+            current_node = truck_state.tour[-1] if truck_state.tour else 0
+            # Se asume que tienes acceso a la matriz de tiempos (debes pasarla si no está en self)
+            # Aquí se asume que self.cfg.time_matrix existe y es un np.array o torch.Tensor
+            time_matrix = self.time_matrix
+            num_nodes = time_matrix.shape[0]
+            for next_node in range(num_nodes):
+                if mask[next_node]:
+                    continue  # Ya está enmascarado
+                next_travel_time = time_matrix[current_node, next_node]
+                time_to_return = time_matrix[next_node, truck_state.tour[0]]   # Tiempo de regreso al depósito
+                if truck_state.total_time + next_travel_time + time_to_return > self.cfg.max_daily_delivery_time_each_truck:
+                    mask[next_node] = True
+            return mask    

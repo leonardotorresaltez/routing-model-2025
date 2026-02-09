@@ -9,7 +9,7 @@ import sys
 from configs.config import parse_args
 from core.envs.tsp_env import TSPEnv
 from core.models.agent import REINFORCEAgent
-from core.utils.data_loader import MDVRPDataLoader
+from core.utils.data_loader import FleetStatus, MDVRPDataLoader, TruckState
 from core.utils.evaluation_utils import evaluate_solution
 from core.utils.visualization_utils_plotly import create_routing_graph, visualize_routing_solution
 
@@ -28,6 +28,8 @@ def train():
     data = loader.load_data()
     
     num_nodes = data["num_nodes"]   
+    
+       
     
     # --- Wandb Init ---
     if cfg.wandb:
@@ -59,14 +61,21 @@ def train():
     print(f"len truck_starts:\n{len(truck_starts)}")
     
     print("TRUCK STARTS:", truck_starts)
-
-
+    
+    fleetStatus = FleetStatus()
+    #fleetStatus.trucklist = {
+    #    i: TruckState(total_time=0.0, tour=[truck_starts[i]])
+    #    for i in range(len(truck_starts))
+    #}
+    fleetStatus.truck_starts = truck_starts
+    fleetStatus.source_mask = source_mask
+    fleetStatus.active_truck = 0
+    fleetStatus.time_matrix = data["time_matrix"]
+    fleetStatus.nodes = nodes
+        
     env = TSPEnv(
         cfg=cfg,
-        nodes=nodes,
-        source_mask=source_mask,
-        truck_starts=truck_starts,
-        time_matrix=data["time_matrix"]      
+        fleetStatus=fleetStatus   
     )
 
     agent = REINFORCEAgent(cfg, data["time_matrix"])
@@ -82,8 +91,8 @@ def train():
         reward = 0.0
 
         while not (done or terminated):
-            truck_id = env.active_truck
-            action = agent.act(obs, truck_id, env.trucks_dict_state)
+            truck_id = env.fleetStatus.active_truck
+            action = agent.act(obs, truck_id, env.fleetStatus.trucklist)
             obs, reward, done, terminated, _ = env.step(action)
             
 
@@ -91,7 +100,7 @@ def train():
             episode_reward += reward
 
         # Check constraints and compute reward inputs
-        all_tours = [truck_state.tour for truck_state in env.trucks_dict_state.values()]   #TODO construir la lista dentro
+        all_tours = [truck_state.tour for truck_state in env.fleetStatus.trucklist.values()]   #TODO construir la lista dentro
         total_destinations_visited, total_time = evaluate_solution(all_tours, data, truck_starts, cfg)                
 
         for customer in data["customers"]:
@@ -114,7 +123,7 @@ def train():
             pbar.write("\n--- Sample Route Plan ---")
 
             # total time and tour for each truck
-            for i, truck_state in env.trucks_dict_state.items():
+            for i, truck_state in env.fleetStatus.trucklist.items():
                 print(f"Truck {i}: total time = {truck_state.total_time}, tour = {truck_state.tour}")
             pbar.write("-------------------------\n")
  

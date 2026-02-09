@@ -4,7 +4,7 @@ import random
 import numpy as np
 from gymnasium import spaces
 
-from core.utils.data_loader import TruckState
+from core.utils.data_loader import FleetStatus, TruckState
 
 
 class TSPEnv(gym.Env):
@@ -13,22 +13,21 @@ class TSPEnv(gym.Env):
     def __init__(       
         self,
         cfg,
-        nodes,                    # Tensor [N, 2]
-        source_mask,              # np.array [N] bool
-        truck_starts,  # list[int]
-        time_matrix,         
+        fleetStatus: FleetStatus,
+       
     ):
         super().__init__()
+        self.fleetStatus = fleetStatus
         self.cfg = cfg
-        self.time_matrix = time_matrix # Store the actual travel times
-        self.nodes = nodes.clone() #then enviroment has ther own copy
-        self.num_nodes = nodes.shape[0]
+        #self.time_matrix = fleetStatus.time_matrix # Store the actual travel times
+        #self.nodes = fleetStatus.nodes.clone() #then enviroment has ther own copy
+        self.num_nodes = self.fleetStatus.num_nodes()
 
-        self.source_mask = source_mask
-        self.target_mask = ~source_mask
+        self.source_mask = self.fleetStatus.source_mask
+        self.target_mask = ~self.source_mask 
 
-        self.truck_starts = list(truck_starts) #safe cast for list
-        self.num_trucks = len(truck_starts)
+        #self.truck_starts = list(self.fleetStatus.truck_starts) #safe cast for list
+        self.num_trucks = len(self.fleetStatus.truck_starts)
         
         # ---------- Observation space ----------
         self.observation_space = spaces.Dict({
@@ -57,6 +56,11 @@ class TSPEnv(gym.Env):
 
         super().reset(seed=seed)
         
+        self.fleetStatus.trucklist = {
+            i: TruckState(total_time=0.0, tour=[self.fleetStatus.truck_starts[i]], position=self.fleetStatus.truck_starts[i])
+            for i in range(len(self.fleetStatus.truck_starts))
+        }
+        
         # reset total_time_bytruck
         #self.total_time_bytruck = [0.0 for _ in range(self.num_trucks)]        
         self.num_steps = 0
@@ -64,9 +68,9 @@ class TSPEnv(gym.Env):
 #       self.trucks_active = [True for _ in range(self.num_trucks)]
         
         # reset truck positions (fixed)
-        self.truck_positions = np.array(
-            self.truck_starts, dtype=np.int64
-        )   
+        #self.truck_positions = np.array(
+        #    self.fleetStatus.truck_starts, dtype=np.int64
+        #)   
         
         # visited mask
         self.visited_targets = np.zeros(self.num_nodes, dtype=np.int8)  # 0 = not visited, 1 = visited    
@@ -75,32 +79,30 @@ class TSPEnv(gym.Env):
         self.visited_targets[self.source_mask] = True      
         
         # truck to act
-        self.active_truck = 0
+        self.fleetStatus.active_truck = 0
+        #self.active_truck = 0
         
         # tours start with initial positions
         #self.tours = [[pos] for pos in self.truck_starts]
 
         # reset total_time_bytruck
-        self.trucks_dict_state = {
-            i: TruckState(total_time=0.0, tour=[self.truck_starts[i]])
-            for i in range(self.num_trucks)
-        }
+
         
         return self._get_obs(), {}
 
     def _get_obs(self):
         return  {
-            "nodes": self.nodes.numpy(),
+            "nodes": self.fleetStatus.nodes.numpy(),
             "is_target": self.target_mask.astype(np.int8),
             "visited_targets": self.visited_targets.astype(np.int8),
-            "current_trucks": self.truck_positions.copy(), #copy to avoid reference issues
+            "current_trucks": self.fleetStatus.truck_positions().copy(), #copy to avoid reference issues
         }
 
     def step(self, action):
         self.num_steps += 1
-        truck_id = self.active_truck        
+        truck_id = self.fleetStatus.active_truck       
         terminated = False        
-        prev_node = self.truck_positions[truck_id]
+        prev_node = self.fleetStatus.trucklist[truck_id].position
         reward = 0.0
         if action==self.num_nodes: # NO-OP action
             # Skip action, move to next     
@@ -108,27 +110,27 @@ class TSPEnv(gym.Env):
             # print(f"Truck {truck_id} took NO-OP action. Penalizing heavily!!!!!!!!!!")
         else:
             reward += 10.0  # Reward for visiting a new target
-            self.truck_positions[truck_id] = action
+            self.fleetStatus.trucklist[truck_id].position = action
             #if (self.visited_targets[action] == True):
             #    print(f"Truck!!!!!!!!!!!!!!!!!!! {truck_id} visited an already visited target: {action}.")
             self.visited_targets[action] = True        
-            self.trucks_dict_state[truck_id].tour.append(action)
+            self.fleetStatus.trucklist[truck_id].tour.append(action)
             
-            dist = self.time_matrix[prev_node, action]
+            dist = self.fleetStatus.time_matrix[prev_node, action]
             
             #if self.trucks_dict_state[truck_id].total_time + dist > 24.0:
             #    reward -= 100  # penalización fuerte
             #else:
             #    reward -= dist
             reward -= dist
-            self.trucks_dict_state[truck_id].total_time += dist
+            self.fleetStatus.trucklist[truck_id].total_time += dist
         
             
         done = self.visited_targets[self.target_mask].all()
 
         # Buscar el siguiente camión disponible (que no supere 24h)
-        self.active_truck, terminated = self._get_next_truck_id()  
-        if (terminated):
+        self.fleetStatus.active_truck, terminated = self._get_next_truck_id()  
+        if (terminated): #TODO esto es imposible, ya que agente lo impide
             print(f"All trucks exceeded 24h xxxx. Terminating episode.")
 
         unvisited_count = (self.visited_targets == False).sum().item()
@@ -136,6 +138,7 @@ class TSPEnv(gym.Env):
         reward -= (unvisited_count * 500.0) # Heavy penalty # Goal: maximize clients
 
        
+        #se supera cantidad de pasos, termina episodio, evitar loops infinitos
         if self.num_steps >= self.num_nodes+500:
             terminated = True
             reward -= 1000 # Heavy penalty for too many steps (to prevent infinite loops)
@@ -144,9 +147,9 @@ class TSPEnv(gym.Env):
     
     
     def _get_next_truck_id(self):
-        next_truck = (self.active_truck + 1) % self.num_trucks
+        next_truck = (self.fleetStatus.active_truck + 1) % self.num_trucks
         for _ in range(self.num_trucks):
-            if self.trucks_dict_state[next_truck].total_time <= 24:
+            if self.fleetStatus.trucklist[next_truck].total_time <= 24:
                 return next_truck, False
             next_truck = (next_truck + 1) % self.num_trucks
         # Si todos los camiones superan 24h, devolver -1 y terminated
