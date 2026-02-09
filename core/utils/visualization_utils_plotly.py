@@ -22,7 +22,7 @@ def create_routing_graph(depots: List[Depot], customers: List[Customer], routes:
 
     # Add edges based on routes
     for truck_id, route in enumerate(routes):
-        if not route: continue
+        if not route or len(route) <= 1: continue
         
         # Determine home depot
         # Dummy data, we assume truck i starts at depot i % num_depots

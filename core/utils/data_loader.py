@@ -8,6 +8,10 @@ import numpy as np
 import pandas as pd
 import torch
 
+@dataclass
+class TruckState:
+    total_time: float = 0.0
+    tour: list = field(default_factory=list)
 
 @dataclass
 class Node:

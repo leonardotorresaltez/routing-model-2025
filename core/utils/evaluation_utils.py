@@ -1,7 +1,7 @@
-def evaluate_solution(env, data, truck_starts, cfg):
+def evaluate_solution(tours, data, truck_starts, cfg):
     # Check total time
     total_times = []
-    for truck_id, tour in enumerate(env.tours):
+    for truck_id, tour in enumerate(tours):
         
         total_time_truck = 0.0
         for i in range(len(tour)-1):
@@ -20,7 +20,7 @@ def evaluate_solution(env, data, truck_starts, cfg):
 
         total_times.append(total_time_truck)
 
-    all_destinations_visited = [subtour for tour in env.tours for subtour in tour[1:]]
+    all_destinations_visited = [subtour for tour in tours for subtour in tour[1:]]
     if len(set(all_destinations_visited)) != len(all_destinations_visited):
         raise ValueError("Some destinations were visited more than once!")
     

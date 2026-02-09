@@ -41,7 +41,8 @@ def train():
 
     nodesObjs = data["nodes"] 
     nodes = torch.tensor([[n.lat, n.lon] for n in nodesObjs], dtype=torch.float32)
-
+    #print(nodes)   
+    #sys.exit(0)
     # --- prints just for verification ---
     print(f"num_nodes:{num_nodes}") 
     print(f"nodesObjs  size:{len(nodesObjs)}") 
@@ -51,7 +52,7 @@ def train():
     
     # Array, Create source mask for depots to avoid visiting them as targets
     source_mask = np.array([getattr(node, 'isSource', False) for node in nodesObjs], dtype=bool)  
-    print(type(source_mask))
+   
     
     # List, Initial truck positions (at their depots)
     truck_starts = [truck.depot_idx for truck in data["trucks"]]
@@ -68,7 +69,7 @@ def train():
         time_matrix=data["time_matrix"]      
     )
 
-    agent = REINFORCEAgent(cfg)
+    agent = REINFORCEAgent(cfg, data["time_matrix"])
 
     # Training Loop, tqdm for a nice progress bar
     pbar = tqdm(range(cfg.episodes))
@@ -76,23 +77,25 @@ def train():
     for episode in pbar:
         obs, _ = env.reset()
         done = False
+        terminated = False
         episode_reward = 0.0
+        reward = 0.0
 
-        while not done:
+        while not (done or terminated):
             truck_id = env.active_truck
-            action = agent.act(obs, truck_id)
+            action = agent.act(obs, truck_id, env.trucks_dict_state)
             obs, reward, done, terminated, _ = env.step(action)
+            
 
             agent.store_reward(reward)
             episode_reward += reward
 
-            #if terminated:
-            #    break
-        # Check constraints and compute reward inputs   
-        total_destinations_visited, total_time = evaluate_solution(env, data, truck_starts, cfg)                
+        # Check constraints and compute reward inputs
+        all_tours = [truck_state.tour for truck_state in env.trucks_dict_state.values()]   #TODO construir la lista dentro
+        total_destinations_visited, total_time = evaluate_solution(all_tours, data, truck_starts, cfg)                
 
         for customer in data["customers"]:
-            if customer.idx in [node for tour in env.tours for node in tour]:
+            if customer.idx in [node for tour in all_tours for node in tour]:
                 customer.delivered = True
             else:
                 customer.delivered = False
@@ -103,15 +106,21 @@ def train():
             print(
                 f"Episode {episode:4d} | "
                 f"Total reward: {episode_reward:.3f} | "
-                f"Loss: {loss:.4f}"
+                f"last Loss: {loss:.4f} | "
+                f"last reward: {reward:.4f}" 
             )
-            print("Tours shape: ", [len(tour) for tour in env.tours])
-            print("Tours: ", env.tours)
             print("Total time: ", total_time)
             print("Total destinations visited: ", total_destinations_visited)
+            pbar.write("\n--- Sample Route Plan ---")
+
+            # total time and tour for each truck
+            for i, truck_state in env.trucks_dict_state.items():
+                print(f"Truck {i}: total time = {truck_state.total_time}, tour = {truck_state.tour}")
+            pbar.write("-------------------------\n")
+ 
  
             # Visualization
-            G = create_routing_graph(data["depots"], data["customers"], env.tours, truck_starts)
+            G = create_routing_graph(data["depots"], data["customers"], all_tours, truck_starts)
             visualize_routing_solution(G, step=episode, title_suffix="Final step", save_path=f"checkpoints/visualization_episode{episode}.html")
              
                         
@@ -119,9 +128,11 @@ def train():
         # Logging to W&B
         if cfg.wandb:
             wandb.log({
-                "reward": episode_reward,
-                "loss": loss,
-                "episode": episode
+                "Total reward": episode_reward,
+                "Last Loss": loss,
+                "Episode": episode,
+                "Total time": total_time,
+                "Total destinations visited": total_destinations_visited
             })
             
         pbar.set_description(f"Rw: {episode_reward:.2f}")

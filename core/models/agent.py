@@ -1,16 +1,38 @@
 import torch
 import torch.optim as optim
-
+import random
 import torch.nn.functional as F
-
-from core.models.policy import  GraphPointerPolicy, MultiHeadGraphPointerPolicy
+import numpy as np
+from core.models.policy import  GraphPointerPolicy
 
 # ----------------------------
 # REINFORCEAgent 
 # ---------------------------- 
 class REINFORCEAgent:
-    def __init__(self, cfg):
+
+    def _apply_time_constraints(self, active_truck, trucks_dict_state, visited_mask):
+            """
+            Modifica la máscara visited_mask para enmascarar también los nodos a los que, si el camión fuera, superaría 24h de tiempo total.
+            """
+            mask = visited_mask.copy()  # Start with the original visited mask (targets already visited)
+            # Obtener el estado actual del camión
+            truck_state = trucks_dict_state[active_truck]
+            current_node = truck_state.tour[-1] if truck_state.tour else 0
+            # Se asume que tienes acceso a la matriz de tiempos (debes pasarla si no está en self)
+            # Aquí se asume que self.cfg.time_matrix existe y es un np.array o torch.Tensor
+            time_matrix = self.time_matrix
+            num_nodes = time_matrix.shape[0]
+            for next_node in range(num_nodes):
+                if mask[next_node]:
+                    continue  # Ya está enmascarado
+                travel_time = time_matrix[current_node, next_node]
+                if truck_state.total_time + travel_time > 24.0:
+                    mask[next_node] = True
+            return mask
+        
+    def __init__(self, cfg, time_matrix):
         self.cfg = cfg
+        self.time_matrix = time_matrix
         self.policy = GraphPointerPolicy(embed_dim=cfg.embed_dim)
         self.policy.to(cfg.device)
         self.optimizer = optim.Adam(self.policy.parameters(), lr=cfg.lr)
@@ -19,21 +41,49 @@ class REINFORCEAgent:
         self.log_probs = []
         self.rewards = []
 
-    def act(self,obs, active_truck):
+    def act(self,obs, active_truck, trucks_dict_state ):
      
         nodes = torch.tensor(obs["nodes"], dtype=torch.float32).to(self.cfg.device)
-        visited = torch.tensor(obs["visited_targets"], dtype=torch.bool).to(self.cfg.device)
+        # visited = torch.tensor(obs["visited_targets"], dtype=torch.bool).to(self.cfg.device)
 
+        # masking: Calculate valid moves
+        visited_targets_copy = obs["visited_targets"]  # Start with the original visited mask (targets already visited)
+        # print("visited_enriched antes de contaarrrr: ", visited_targets_copy)
+        unvisited_count = (visited_targets_copy == False).sum().item()
+        # print(f"Unvisited targets count before time constraintssssss: {unvisited_count}")
+        visited_enriched = self._apply_time_constraints(active_truck, trucks_dict_state, visited_targets_copy)
+        unvisited_count_2 = (visited_enriched == False).sum().item()
+        # print(f"Unvisited targets count after time constraintssssss: {unvisited_count_2}")
+        # Comparar cantidad de True
+        
+        #n_true_mask = sum(visited_targets_copy)
+        #n_true_enriched = sum(visited_enriched)
+        #if n_true_enriched < n_true_mask:
+        #    print(f"visited_mask True: {n_true_mask}, visited_enriched True: {n_true_enriched}")
+
+        visited_enriched = torch.tensor(visited_enriched, dtype=torch.bool).to(self.cfg.device)
         
         current_node = obs["current_trucks"][active_truck]
+        np.set_printoptions(threshold=np.inf)
+
+       
+        action_result = -1
+        if visited_enriched.all():
+            #print("visited_enriched está completamente llenooooooooo de True")
+            action_result = nodes.shape[0]  # Acción de NO-OP, apuntando a un índice fuera del rango de nodos, no lamar al policy xq se vuelve loco
+        else:
+            probs = self.policy(nodes, current_node, visited_enriched)
+            dist = torch.distributions.Categorical(probs)
         
-        probs = self.policy(nodes, current_node, visited)
-        dist = torch.distributions.Categorical(probs)
+            action = dist.sample()
         
-        action = dist.sample()
-        
-        self.log_probs.append(dist.log_prob(action))
-        return int(action.item())
+            #print("actionnnnn:", action.item())
+            #print("visited_enriched luegoo dee MPL: ", visited_targets_copy[action.item()])
+
+            self.log_probs.append(dist.log_prob(action))
+            action_result = action.item()
+
+        return int(action_result)
 
 
     def store_reward(self, reward):
@@ -47,6 +97,10 @@ class REINFORCEAgent:
         policy_loss = []
         returns = []
         
+        if len(self.log_probs) == 0:
+            print("No log probabilities stored!!!!!")
+        if len(self.rewards) == 0:
+            print("No rewards stored. !!!!!")    
         # Calculate Returns (Cumulative Reward from t to T)
         # example:
         # Step 	reward	return
@@ -60,6 +114,7 @@ class REINFORCEAgent:
             
         returns = torch.tensor(returns).to(self.cfg.device)
         # Normalize returns for stability
+        returns = returns.float()
         returns = (returns - returns.mean()) / (returns.std() + 1e-9)
         
         for log_prob, R in zip(self.log_probs, returns):
@@ -73,4 +128,10 @@ class REINFORCEAgent:
         # Clear buffers
         self.log_probs.clear()
         self.rewards.clear()
-        return loss.item()
+        losint = loss.item()
+        #if abs(losint) < 1e-6:
+            #print("loss:", losint)
+            #print("log_probs:", self.log_probs)
+            #print("returns:", returns)
+            #print("policy_loss:", policy_loss)
+        return losint
