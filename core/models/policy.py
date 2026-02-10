@@ -9,7 +9,7 @@ import torch.nn.functional as F
 # GraphPointer Policy Model
 # ----------------------------    
 class GraphPointerPolicy(nn.Module):
-    def __init__(self, node_dim=2, embed_dim=128):
+    def __init__(self, node_dim=3, embed_dim=128):
         super().__init__()
 
         # -------------------------

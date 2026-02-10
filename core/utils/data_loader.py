@@ -14,19 +14,25 @@ class TruckState:
     tour: list = field(default_factory=list)
     position: int = None  # current node index
 
+@dataclass
 class FleetStatus:
     active_truck: int = 0
-    trucklist: dict[int, TruckState] = {}  # key: truck_id, value: TruckState(total_time, tour)
-    truck_starts: list[int] = []  # List of starting depot indices for each truck
+    trucklist: dict[int, TruckState] = field(default_factory=dict)  # key: truck_id, value: TruckState(total_time, tour)
+    truck_starts: list[int] = field(default_factory=list)  # List of starting depot indices for each truck
     source_mask: np.ndarray = None  # Mask to identify source nodes (depots)
-    time_matrix: Dict = None  # Time matrix for travel times between nodes
+    time_matrix: dict = None  # Time matrix for travel times between nodes
     nodes: torch.Tensor = None  # Node features (e.g., coordinates, time profiles)
     
     def truck_positions(self):
         return np.array([state.position for state in self.trucklist.values()], dtype=np.int64)
     
     def num_nodes(self):
-        return self.nodes.shape[0] if self.nodes is not None else 0
+        return self.nodes.shape[0] if self.nodes is not None else 0    
+    
+    def all_tours(self):
+        return [state.tour for state in self.trucklist.values()]
+    def num_trucks(self):
+        return len(self.truck_starts)
 
 @dataclass
 class Node:

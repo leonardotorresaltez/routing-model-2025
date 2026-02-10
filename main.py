@@ -18,6 +18,8 @@ def set_seed(seed):
     np.random.seed(seed)
     random.seed(seed)
 
+
+
 def train():
     cfg = parse_args()
     set_seed(cfg.seed)
@@ -26,11 +28,12 @@ def train():
     
     loader = MDVRPDataLoader(data_dir=cfg.data_dir)
     data = loader.load_data()
-    
-    num_nodes = data["num_nodes"]   
-    
-       
-    
+    nodesObjs = data["nodes"] 
+    nodes = torch.tensor([[n.lat, n.lon] for n in nodesObjs], dtype=torch.float32)    
+    source_mask = np.array([getattr(node, 'isSource', False) for node in nodesObjs], dtype=bool)  
+    # List, Initial truck positions (at their depots)
+    truck_starts = [truck.depot_idx for truck in data["trucks"]]
+
     # --- Wandb Init ---
     if cfg.wandb:
         wandb.init(
@@ -39,98 +42,59 @@ def train():
             config=vars(cfg)
         )
 
-    print(f"--> STARTING RUN: {cfg.run_name}")
+    print_verification_info(nodesObjs, data, truck_starts)
 
-    nodesObjs = data["nodes"] 
-    nodes = torch.tensor([[n.lat, n.lon] for n in nodesObjs], dtype=torch.float32)
-    #print(nodes)   
-    #sys.exit(0)
-    # --- prints just for verification ---
-    print(f"num_nodes:{num_nodes}") 
-    print(f"nodesObjs  size:{len(nodesObjs)}") 
-    print(f"number of depots:\n{len(data['depots'])}")  
-    print(f"number of customers:\n{len(data['customers'])}")    
-    print(f"number of trucks:\n{len(data['trucks'])}")    
     
-    # Array, Create source mask for depots to avoid visiting them as targets
-    source_mask = np.array([getattr(node, 'isSource', False) for node in nodesObjs], dtype=bool)  
-   
-    
-    # List, Initial truck positions (at their depots)
-    truck_starts = [truck.depot_idx for truck in data["trucks"]]
-    print(f"len truck_starts:\n{len(truck_starts)}")
-    
-    print("TRUCK STARTS:", truck_starts)
-    
-    fleetStatus = FleetStatus()
-    #fleetStatus.trucklist = {
-    #    i: TruckState(total_time=0.0, tour=[truck_starts[i]])
-    #    for i in range(len(truck_starts))
-    #}
-    fleetStatus.truck_starts = truck_starts
-    fleetStatus.source_mask = source_mask
-    fleetStatus.active_truck = 0
-    fleetStatus.time_matrix = data["time_matrix"]
-    fleetStatus.nodes = nodes
+    fleetStatus = FleetStatus(
+        truck_starts=truck_starts,
+        source_mask=source_mask,
+        active_truck=0,
+        time_matrix=data["time_matrix"],
+        nodes=nodes
+    )
         
     env = TSPEnv(
         cfg=cfg,
         fleetStatus=fleetStatus   
     )
 
-    agent = REINFORCEAgent(cfg, data["time_matrix"])
+    agent = REINFORCEAgent(
+        cfg=cfg,
+        fleetStatus=fleetStatus   
+    )
 
-    # Training Loop, tqdm for a nice progress bar
+    # Training Loop, tqdm for a nice progress bar    
     pbar = tqdm(range(cfg.episodes))
+    print(f"--> STARTING RUN: {cfg.run_name}")
     print("episode is=", cfg.episodes)
     for episode in pbar:
         obs, _ = env.reset()
-        done = False
-        terminated = False
+        done, terminated = False, False
         episode_reward = 0.0
-        reward = 0.0
+
 
         while not (done or terminated):
-            truck_id = env.fleetStatus.active_truck
-            action = agent.act(obs, truck_id, env.fleetStatus.trucklist)
-            obs, reward, done, terminated, _ = env.step(action)
-            
-
+            action = agent.act(obs)
+            obs, reward, done, terminated, _ = env.step(action)            
             agent.store_reward(reward)
             episode_reward += reward
 
-        # Check constraints and compute reward inputs
-        all_tours = [truck_state.tour for truck_state in env.fleetStatus.trucklist.values()]   #TODO construir la lista dentro
-        total_destinations_visited, total_time = evaluate_solution(all_tours, data, truck_starts, cfg)                
+        # Check constraints 
+        total_destinations_visited, total_time = evaluate_solution(env.fleetStatus.all_tours(), data, truck_starts, cfg)                
 
-        for customer in data["customers"]:
-            if customer.idx in [node for tour in all_tours for node in tour]:
-                customer.delivered = True
-            else:
-                customer.delivered = False
 
         loss = agent.update()
 
-        if episode % 50 == 0:
-            print(
-                f"Episode {episode:4d} | "
-                f"Total reward: {episode_reward:.3f} | "
-                f"last Loss: {loss:.4f} | "
-                f"last reward: {reward:.4f}" 
-            )
-            print("Total time: ", total_time)
-            print("Total destinations visited: ", total_destinations_visited)
-            pbar.write("\n--- Sample Route Plan ---")
-
-            # total time and tour for each truck
-            for i, truck_state in env.fleetStatus.trucklist.items():
-                print(f"Truck {i}: total time = {truck_state.total_time}, tour = {truck_state.tour}")
-            pbar.write("-------------------------\n")
- 
- 
-            # Visualization
-            G = create_routing_graph(data["depots"], data["customers"], all_tours, truck_starts)
-            visualize_routing_solution(G, step=episode, title_suffix="Final step", save_path=f"checkpoints/visualization_episode{episode}.html")
+        report_every_50_episodes(
+            episode,
+            episode_reward,
+            loss,
+            total_time,
+            total_destinations_visited,
+            env,
+            data,
+            truck_starts,
+            pbar)
              
                         
 
@@ -153,6 +117,55 @@ def train():
     
     if cfg.wandb:
         wandb.finish()
+
+def report_every_50_episodes(
+    episode,
+    episode_reward,
+    loss,
+    total_time,
+    total_destinations_visited,
+    env,
+    data,
+    truck_starts,
+    pbar
+):
+    if episode % 50 == 0:
+        print(
+            f"Episode {episode:4d} | "
+            f"Total reward: {episode_reward:.3f} | "
+            f"last Loss: {loss:.4f} | "
+        )
+        print("Total time: ", total_time)
+        print("Total destinations visited: ", total_destinations_visited)
+        pbar.write("\n--- Sample Route Plan ---")
+
+        # total time and tour for each truck
+        for i, truck_state in env.fleetStatus.trucklist.items():
+            print(f"Truck {i}: total time = {truck_state.total_time:.2f}, tour = {truck_state.tour}")
+        pbar.write("-------------------------\n")
+
+        for customer in data["customers"]:
+            if customer.idx in [node for tour in env.fleetStatus.all_tours() for node in tour]:
+                customer.delivered = True
+            else:
+                customer.delivered = False 
+
+        # Visualization
+        G = create_routing_graph(data["depots"], data["customers"], env.fleetStatus.all_tours(), truck_starts)
+        visualize_routing_solution(G, step=episode, title_suffix="Final step", save_path=f"checkpoints/visualization_episode{episode}.html")
+
+
+def print_verification_info(nodesObjs, data, truck_starts):
+    print("\n" + "="*40)
+    print("🚚  DATA INSTANCE SUMMARY  🚚")
+    print("="*40)
+    print(f"• Number of nodes:         {len(nodesObjs)}")
+    print(f"• Number of depots:        {len(data['depots'])}")
+    print(f"• Number of customers:     {len(data['customers'])}")
+    print(f"• Number of trucks:        {len(data['trucks'])}")
+    print(f"• Truck start positions:   {truck_starts}")
+    print("="*40 + "\n")
+
 
 if __name__ == "__main__":
     train()
