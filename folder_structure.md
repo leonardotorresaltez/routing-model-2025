@@ -5,31 +5,31 @@ This repository contains a modular Reinforcement Learning framework designed to 
 ## Project Structure
 ```
 routing-model-2025/
-├── checkpoints/ # Pesos de modelos entrenados
-├── data/ # Datos de entrada y salida
-├── notebooks/ # Jupyter notebooks de experimentación
+├── checkpoints/ # Trained model weights
+├── data/ # Input and output data
+├── notebooks/ # Experimentation Jupyter notebooks
 ├── packages/
 │ ├── logisticsrl-lib/
 │ │ └── src/logisticsrl_lib/
-│ │ ├── main.py # Script principal de entrenamiento
+│ │ ├── main.py # Main training script
 │ │ ├── configs/
-│ │ │ └── config.py # Configuración y argumentos
+│ │ │ └── config.py # Configuration and arguments
 │ │ └── reinforcelearning/
-│ │ ├── agent.py # Lógica del agente RL
-│ │ ├── policy.py # Arquitectura de la policy
-│ │ └── tsp_env.py # Entorno Gymnasium
+│ │ ├── agent.py # RL agent logic
+│ │ ├── policy.py # Policy architecture
+│ │ └── tsp_env.py # Gymnasium environment
 │ ├── loader-lib/
 │ │ └── src/loader_lib/
-│ │ └── data_loader.py # Carga y procesamiento de datos
+│ │ └── data_loader.py # Data loading and processing
 │ └── common-lib/
 │ └── src/common_lib/
-│ ├── evaluation_utils.py # Utilidades de evaluación
-│ └── visualization_utils_plotly.py # Visualización de rutas
-├── run_experiments.py # Orquestador de experimentos/grid search
-├── requirements.txt # Dependencias para entorno base
-├── pyproject.toml # Configuración de Poetry y scripts
-├── README.md # Documentación principal
-└── wandb/ # Logs de experimentos W&B
+│ ├── evaluation_utils.py # Evaluation utilities
+│ └── visualization_utils_plotly.py # Route visualization
+├── run_experiments.py # Experiment/grid search orchestrator
+├── requirements.txt # Base environment dependencies
+├── pyproject.toml # Poetry configuration and scripts
+├── README.md # Main documentation
+└── wandb/ # W&B experiment logs
 ```
 ---
 
