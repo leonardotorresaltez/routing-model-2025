@@ -25,11 +25,16 @@ class TSPEnv(gym.Env):
         self.target_mask = ~self.source_mask 
         self.num_trucks = self.fleetStatus.num_trucks()
         
+        min_vals = self.fleetStatus.nodes.min(dim=0).values.numpy()
+        max_vals = self.fleetStatus.nodes.max(dim=0).values.numpy()
+        low = np.tile(min_vals, (self.num_nodes, 1))
+        high = np.tile(max_vals, (self.num_nodes, 1))
+        
         # ---------- Observation space ----------
         self.observation_space = spaces.Dict({
             # Node coordinates
             "nodes": spaces.Box(
-                low=0.0, high=1.0, shape=(self.num_nodes, 2), dtype=np.float32
+                low=low, high=high, shape=(self.num_nodes, 2), dtype=np.float32
             ),
             # Which nodes are targets
             "is_target": spaces.MultiBinary(self.num_nodes
@@ -81,7 +86,7 @@ class TSPEnv(gym.Env):
         if action==self.num_nodes: # NO-OP action
             reward -=  100.0  # Heavy penalty for NO-OP to encourage visiting customers
         else:
-            reward += 10.0  # Reward for visiting a new target
+            #reward += 10.0  # Reward for visiting a new target
             self.fleetStatus.trucklist[truck_id].position = action
             self.visited_targets[action] = True        
             self.fleetStatus.trucklist[truck_id].tour.append(action)
@@ -95,11 +100,11 @@ class TSPEnv(gym.Env):
 
         # search for next truck that can act, if all exceed 24h, terminate episode
         self.fleetStatus.active_truck, terminated = self._get_next_truck_id()  
-        if (terminated): #TODO this is not posible because agent avoid id
+        if (terminated): #TODO this is not posible because agent avoid it
             print(f"All trucks exceeded 24h xxxx. Terminating episode.")
 
-        unvisited_count = (self.visited_targets == False).sum().item()
-        reward -= (unvisited_count * 500.0) # Heavy penalty # Goal: maximize clients
+        #unvisited_count = (self.visited_targets == False).sum().item()
+        #reward -= (unvisited_count * 500.0) # Heavy penalty # Goal: maximize clients
 
        
         #avoid infinite loops: if too many steps, terminate episode with heavy penalty
@@ -112,7 +117,7 @@ class TSPEnv(gym.Env):
     def _get_next_truck_id(self):
         next_truck = (self.fleetStatus.active_truck + 1) % self.num_trucks
         for _ in range(self.num_trucks):
-            if self.fleetStatus.trucklist[next_truck].total_time <= 24:
+            if self.fleetStatus.trucklist[next_truck].total_time <= 24:   #TODO this is not posible because agent avoid it, but we need to check it anyway
                 return next_truck, False
             next_truck = (next_truck + 1) % self.num_trucks
         # If all trucks exceed 24h, return -1 and terminated
