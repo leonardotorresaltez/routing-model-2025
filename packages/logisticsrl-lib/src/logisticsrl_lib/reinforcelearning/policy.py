@@ -2,50 +2,22 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-# ----------------------------
-# Attention-based Policy Model
-# ----------------------------
-class AttentionPolicy(nn.Module):
-    def __init__(self, node_dim=2, embed_dim=128):
-        super().__init__()
-        self.node_embed = nn.Linear(node_dim, embed_dim)
-        self.query = nn.Linear(embed_dim, embed_dim)
-        self.key = nn.Linear(embed_dim, embed_dim)
 
-    def forward(self, nodes, current_node_idx, visited_mask):
-        """
-        nodes: [N, node_dim]             node features (e.g. coordinates)
-        current_node_idx: int            current position
-        visited_mask: [N] (bool)         True = already visited
-        """        
-        
-        # Embed nodes
-        h = self.node_embed(nodes)
-        
-        # Query = embedding of current node
-        q = self.query(h[current_node_idx])
-        
-        # Keys = all nodes
-        k = self.key(h)
-        
-         # Attention scores
-        scores = torch.matmul(k, q)
-        
-        # Masking: visited nodes get -inf score
-        scores = scores.masked_fill(visited_mask.bool(), float("-inf"))
-        
-        # probability of choosing next node
-        probs = F.softmax(scores, dim=0)
-        return probs
     
     
 # ----------------------------
 # GraphPointer Policy Model
 # ----------------------------    
 class GraphPointerPolicy(nn.Module):
-    def __init__(self, node_dim=2, embed_dim=128):
+    def __init__(self, node_dim=3, embed_dim=128):
         super().__init__()
 
+        # -------------------------
+        # Añadir NO-OP
+        # ------------------------- 
+        #self.noop_key = nn.Parameter(torch.randn(embed_dim))
+        #self.noop_bias = nn.Parameter(torch.zeros(1))
+        
         # Node embedding
         self.node_embed = nn.Linear(node_dim, embed_dim)
 
@@ -56,56 +28,33 @@ class GraphPointerPolicy(nn.Module):
         self.query = nn.Linear(embed_dim, embed_dim)
         self.key = nn.Linear(embed_dim, embed_dim)
 
-    def forward(self, nodes, current_idx, visited_mask):
+    def forward(self, nodes: torch.Tensor , current_node: int, visited_mask: torch.Tensor):
         """
-        nodes: [N, node_dim]
-        current_idx: int
-        visited_mask: [N] bool
+        nodes:        [N, 2]
+        current_node: int
+        visited_mask: [N] bool  (True = forbidden)
         """
 
-        # ======================
-        # 1️ Encode graph nodes
-        # ======================
-        
-        #embed nodes , shape is N=number of nodes, D=embed_dim
-        h = self.node_embed(nodes)        # [N, D]
-        # example nodes tensor([[0.1, 0.2],  # Nodo 1
-        #                       [0.3, 0.4],  # Nodo 2
-        #                       [0.5, 0.6],  # Nodo 3
-        #                       [0.7, 0.8],  # Nodo 4
-        #                       [0.9, 1.0]]) # Nodo 5
-        
-        #example h embedding tensor after node_embed layer
-        #torch.tensor([[ 0.1234, -0.5678, ..., 0.9876],  # Embedding del nodo 1 [128 valores]
-        #[ 0.2345, -0.6789, ..., 1.0987],  # Embedding del nodo 2
-        #[ 0.3456, -0.7890, ..., 1.2098],  # Embedding del nodo 3
-        #[ 0.4567, -0.8901, ..., 1.3209],  # Embedding del nodo 4
-        #[ 0.5678, -0.9012, ..., 1.4320]]) # Embedding del nodo 5        
-        
-        # ======================
-        # 2️ Graph message passing (mean aggregation)
-        # ======================
-        
-        #mean of embedded nodes, dim=0 means in which dimension to take the mean
-        #example:  tensor([[ 0.3456, -0.7674, ..., 1.2098]])   - one vector of size D
-        graph_context = h.mean(dim=0, keepdim=True)   # [1, D]
-        #update node embeddings with graph context
-        h = h + self.msg_linear(graph_context)        # [N, D]
+        visited_mask = visited_mask.bool()
 
+        h = self.node_embed(nodes)           # [N, D]
+        graph_ctx = self.msg_linear(h.mean(0))  # [D]
 
+        query = self.query(h[current_node] + graph_ctx)  # [D]
+        keys = self.key(h)                               # [N, D]
 
-        # ======================
-        # 3️ Pointer attention
-        # ======================
+        scores = torch.matmul(keys, query)               # [N]
         
-        #query based on current node
-        q = self.query(h[current_idx])    # [D]
-        #keys for all nodes
-        k = self.key(h)                   # [N, D]
-
-        #compute attention scores
-        scores = torch.matmul(k, q)       # [N]
-        scores = scores.masked_fill(visited_mask.bool(), -1e9)
+        scores = scores.masked_fill(visited_mask, -1e9)
+        
+        # -------------------------
+        # Añadir NO-OP
+        # ------------------------- 
+        
+        #noop_score = torch.dot(query, self.noop_key)  + self.noop_bias  # scalar
+        #noop_score = noop_score.view(1)   # fuerza shape [1]
+        #scores = torch.cat([scores, noop_score], dim=0)  # [N + 1]       
 
         probs = F.softmax(scores, dim=0)
         return probs    
+    

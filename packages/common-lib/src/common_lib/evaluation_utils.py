@@ -1,4 +1,4 @@
-def evaluate_solution(tours, time_matrix, truck_starts, max_daily_delivery_time_each_truck):
+def evaluate_solution(tours,  data, truck_starts, cfg):
     # Check total time
     total_times = []
     for truck_id, tour in enumerate(tours):
@@ -7,13 +7,13 @@ def evaluate_solution(tours, time_matrix, truck_starts, max_daily_delivery_time_
         for i in range(len(tour)-1):
             from_node = tour[i]
             to_node = tour[i+1]
-            travel_time = time_matrix[from_node, to_node]
+            travel_time = data["time_matrix"][from_node, to_node]
             total_time_truck += travel_time
-        # total_time_truck += time_matrix[truck_starts[truck_id], tour[0]]   # From depot to first
-        total_time_truck += time_matrix[tour[-1], truck_starts[truck_id]]  # Return to depot
+        # total_time_truck += data["time_matrix"][truck_starts[truck_id], tour[0]]   # From depot to first
+        total_time_truck += data["time_matrix"][tour[-1], truck_starts[truck_id]]  # Return to depot
         
-#        if total_time_truck > max_daily_delivery_time_each_truck:
-#            raise ValueError(f"Truck {truck_id} exceeded max daily delivery time: {total_time_truck} > {max_daily_delivery_time_each_truck}")
+        if total_time_truck > cfg.max_daily_delivery_time_each_truck:
+            raise ValueError(f"Truck {truck_id} exceeded max daily delivery time: {total_time_truck} > {cfg.max_daily_delivery_time_each_truck}")
 
         if tour[0] != truck_starts[truck_id]:
             raise ValueError(f"Truck {truck_id} did not start at its depot: started at {tour[0]}, should start at {truck_starts[truck_id]}")

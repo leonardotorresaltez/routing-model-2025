@@ -1,7 +1,6 @@
 import argparse
 from dataclasses import dataclass
 
-
 @dataclass
 class Config:
     # --- Experiment ---
@@ -10,7 +9,7 @@ class Config:
     seed: int = 42
     device: str = "cpu"
     wandb: bool = True  # Toggle W&B logging
-    data_dir: str = "data_version_1"  # data path
+    data_dir: str = "data_version_2"  # data path
     
     # --- Model ---
     embed_dim: int = 128
@@ -34,7 +33,6 @@ class Config:
         self.run_name = f"lr{self.lr}_sd{self.seed}"
 
 def parse_args() -> Config:
-    
     base_cfg = Config()
     parser = argparse.ArgumentParser()
     
@@ -45,11 +43,13 @@ def parse_args() -> Config:
     parser.add_argument("--device", type=str, default=base_cfg.device)
     parser.add_argument("--data_dir", type=str, default=base_cfg.data_dir)
     parser.add_argument("--max_daily_delivery_time_for_each_truck", type=int, default=base_cfg.max_daily_delivery_time_each_truck)
+    
     # Flag: --no-wandb to disable logging
     parser.add_argument("--no-wandb", action="store_true", help="Disable W&B")
 
     args = parser.parse_args()
 
+    
     return Config(
         lr=args.lr,
         episodes=args.episodes,
@@ -59,6 +59,3 @@ def parse_args() -> Config:
         wandb=not args.no_wandb,
         data_dir=args.data_dir
     )
-    
-
-    

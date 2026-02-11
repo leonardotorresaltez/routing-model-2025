@@ -33,10 +33,21 @@ routing-model-2025/
 ```
 ---
 
+
+## Subproject Dependencies
+
+Below is a simple diagram illustrating the dependencies between the subprojects:
+
+```mermaid
+graph TD
+    logisticsrl-lib --> loader-lib
+    logisticsrl-lib --> common-lib
+```
+
 ## Installation & Setup
 
 
-0. **Install Poetry**
+1. 🚀 **Install Poetry**
    Poetry is the recommended dependency manager for this project. You can install it by following the official documentation:
    - **Mac/Linux:**
      ```bash
@@ -46,35 +57,30 @@ routing-model-2025/
      ```powershell
      (Invoke-WebRequest -Uri https://install.python-poetry.org -UseBasicParsing).Content | python -
      ```
-   More details and alternative methods: https://python-poetry.org/docs/#installation
+   Poetry simplifies dependency management and ensures consistent environments across systems. More details and alternative methods: [Poetry Installation Guide](https://python-poetry.org/docs/#installation).
 
-1. **Install Dependencies**
-   Use the provided requirements file to set up your environment:
+2. 📦 **Install Dependencies**
+   Use the provided requirements file to set up your environment. Navigate to each package directory and install dependencies using Poetry:
    ```bash
-cd packages/logisticsrl-lib && poetry install
-cd ../loader-lib && poetry install
-cd ../common-lib && poetry install
+   cd packages/logisticsrl-lib && poetry install
+   cd ../loader-lib && poetry install
+   cd ../common-lib && poetry install
    ```
+   This ensures that all required libraries and tools are installed for each module.
 
-2. **Initialize Weights & Biases (Optional)**
-   This project is integrated with W&B for real-time experiment tracking.
-   ```bash
-   wandb login
-   ```
-
-3. **Update dependencies after adding a new package**
-   If you add a new dependency to any of the Poetry-managed packages, run:
+3. 🔄 **Update Dependencies After Adding a New Package**
+   If you add a new dependency to any of the Poetry-managed packages, update the lock file and install the new dependency by running:
    ```bash
    poetry update
    ```
-   inside the corresponding package directory (e.g., `packages/logisticsrl-lib`). This will update the lock file and install the new dependency.
+   Execute this command inside the corresponding package directory (e.g., `packages/logisticsrl-lib`). Each subproject contains a `pyproject.toml` file, which defines its dependencies and configuration. This keeps your environment up-to-date and consistent.
 
-4. **Run the training script with Poetry**
+4. 🏃 **Run the Training Script with Poetry**
    To execute the main training script using Poetry's script system, run:
    ```bash
    poetry run train
    ```
-   This will call the `train`  function defined in `main.py` of the `logisticsrl-lib` package, ensuring the correct environment and dependencies are used.   
+   This command invokes the `train` function defined in `main.py` of the `logisticsrl-lib` package. Poetry ensures the correct environment and dependencies are used during execution.
 
 5. **Poetry, virtual environments, and Visual Studio Code**
    Poetry automatically creates and manages a virtual environment (venv) for each project. To use this venv in Visual Studio Code:
@@ -82,5 +88,10 @@ cd ../common-lib && poetry install
    - In VS Code, open the Command Palette (`Ctrl+Shift+P` or `Cmd+Shift+P`), search for "Python: Select Interpreter", and choose the interpreter that matches the path shown by Poetry.
    - This ensures that scripts and notebooks use the correct environment with all dependencies installed by Poetry.
 
+6. **Initialize Weights & Biases (Optional)**
+   This project is integrated with W&B for real-time experiment tracking.
+   ```bash
+   wandb login
+   ```
 
 ---
