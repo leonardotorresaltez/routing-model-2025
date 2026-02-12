@@ -198,8 +198,8 @@ def train():
         print(f"Route: {route}\n")
     
     tours = [results[cluster_id]["route"][:-1] for cluster_id in range(n_clusters) if cluster_id in results]
-    total_destinations_visited, total_time =evaluate_solution(tours, data, truck_starts, cfg)
-    print(f"Total destinations visited: {total_destinations_visited}, Total time: {total_time:.2f}")
+    total_destinations_visited, total_time, pct_intersections = evaluate_solution(tours, data, truck_starts, cfg)
+    print(f"Total destinations visited: {total_destinations_visited}, Total time: {total_time:.2f}, Percentage of intersections: {pct_intersections:.2%}")
 
     for customer in customers:
         if customer.idx in [node for tour in tours for node in tour]:

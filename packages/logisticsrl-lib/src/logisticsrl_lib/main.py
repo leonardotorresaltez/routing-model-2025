@@ -24,7 +24,7 @@ def train():
     cfg = parse_args()
     set_seed(cfg.seed)
     
-    #os.makedirs("checkpoints", exist_ok=True)
+    os.makedirs("checkpoints", exist_ok=True)
     
     loader = MDVRPDataLoader(data_dir=cfg.data_dir)
     data = loader.load_data()
@@ -80,7 +80,7 @@ def train():
             episode_reward += reward
 
         # Check constraints 
-        total_destinations_visited, total_time = evaluate_solution(env.fleetStatus.all_tours(), data, truck_starts, cfg)                
+        total_destinations_visited, total_time, pct_intersections = evaluate_solution(env.fleetStatus.all_tours(), data, truck_starts, cfg)                
 
 
         loss = agent.update()
@@ -91,6 +91,7 @@ def train():
             loss,
             total_time,
             total_destinations_visited,
+            pct_intersections,
             env,
             data,
             truck_starts,
@@ -105,7 +106,8 @@ def train():
                 "Last Loss": loss,
                 "Episode": episode,
                 "Total time": total_time,
-                "Total destinations visited": total_destinations_visited
+                "Total destinations visited": total_destinations_visited,
+                "Percentage of intersections": pct_intersections
             })
             
         pbar.set_description(f"Rw: {episode_reward:.2f}")
@@ -124,6 +126,7 @@ def report_every_50_episodes(
     loss,
     total_time,
     total_destinations_visited,
+    pct_intersections,
     env,
     data,
     truck_starts,
@@ -137,6 +140,7 @@ def report_every_50_episodes(
         )
         print("Total time: ", total_time)
         print("Total destinations visited: ", total_destinations_visited)
+        print("Percentage of intersections: ", pct_intersections)
         pbar.write("\n--- Sample Route Plan ---")
 
         # total time and tour for each truck
@@ -152,7 +156,7 @@ def report_every_50_episodes(
 
         # Visualization
         G = create_routing_graph(data["depots"], data["customers"], env.fleetStatus.all_tours(), truck_starts)
-        visualize_routing_solution(G, step=episode, title_suffix="Final step", save_path=f"../../checkpoints/visualization_episode{episode}.html")
+        visualize_routing_solution(G, step=episode, title_suffix="Final step", save_path=f"checkpoints/visualization_episode{episode}.html")
 
 
 def print_verification_info(nodesObjs, data, truck_starts):
