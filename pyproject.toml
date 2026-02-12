@@ -34,3 +34,4 @@ logisticsrl-lib = { path = "packages/logisticsrl-lib", develop = true }
 
 [tool.poetry.scripts]
 train = "logisticsrl_lib.main:train"
+benchmarks = "logisticsrl_lib.compute_benchmarks:train"

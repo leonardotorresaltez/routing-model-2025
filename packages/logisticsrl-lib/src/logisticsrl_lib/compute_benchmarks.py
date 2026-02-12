@@ -7,13 +7,19 @@ from tqdm import tqdm
 from sklearn.cluster import KMeans
 import matplotlib.pyplot as plt
 
-import wandb
-from configs.config import parse_args
-from core.envs.tsp_env import TSPEnv
-from core.models.agent import REINFORCEAgent
-from core.utils.data_loader import MDVRPDataLoader
-from core.utils.evaluation_utils import evaluate_solution
-from core.utils.visualization_utils_plotly import create_routing_graph, visualize_routing_solution
+# import wandb
+# from configs.config import parse_args
+# from core.envs.tsp_env import TSPEnv
+# from core.models.agent import REINFORCEAgent
+# from core.utils.data_loader import MDVRPDataLoader
+# from core.utils.evaluation_utils import evaluate_solution
+# from core.utils.visualization_utils_plotly import create_routing_graph, visualize_routing_solution
+from logisticsrl_lib.configs.config import parse_args
+from logisticsrl_lib.reinforcelearning.tsp_env import TSPEnv
+from logisticsrl_lib.reinforcelearning.agent import REINFORCEAgent
+from loader_lib.data_loader import FleetStatus, MDVRPDataLoader, TruckState
+from common_lib.evaluation_utils import evaluate_solution
+from common_lib.visualization_utils_plotly import create_routing_graph, visualize_routing_solution
 import sys
 
 def set_seed(seed):
@@ -46,14 +52,16 @@ def train():
     time_matrix_to_truck_starts = time_matrix[:, unique_truck_starts].T
 
     go_and_return_time_matrix = time_matrix_from_truck_starts + time_matrix_to_truck_starts
-    print("Go and return time matrix:\n", go_and_return_time_matrix)
+    # print("Go and return time matrix:\n", go_and_return_time_matrix)
 
     time_wrt_closest_truck_start = go_and_return_time_matrix.min(dim=0).values
-    print("time_wrt_closest_truck_start: ", time_wrt_closest_truck_start)
+    # print("time_wrt_closest_truck_start: ", time_wrt_closest_truck_start)
 
     unfeasible_nodes = (time_wrt_closest_truck_start > cfg.max_daily_delivery_time_each_truck).nonzero(as_tuple=True)[0].tolist()
     print(f"Unfeasible nodes (time to closest truck start > {cfg.max_daily_delivery_time_each_truck}): {unfeasible_nodes}")
 
+    # print("CHECKKKKKK")
+    # print(data.keys())
     customers_df = data["customers_df"]
     customers_df["idx"] = customers_df["id_customer"].map(node_to_idx)
     customers_df = customers_df.set_index("idx")
@@ -190,7 +198,7 @@ def train():
         print(f"Route: {route}\n")
     
     tours = [results[cluster_id]["route"][:-1] for cluster_id in range(n_clusters) if cluster_id in results]
-    total_destinations_visited, total_time =evaluate_solution(tours, time_matrix, truck_starts, cfg.max_daily_delivery_time_each_truck)
+    total_destinations_visited, total_time =evaluate_solution(tours, data, truck_starts, cfg)
     print(f"Total destinations visited: {total_destinations_visited}, Total time: {total_time:.2f}")
 
     for customer in customers:

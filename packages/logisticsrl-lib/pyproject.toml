@@ -6,7 +6,8 @@ requires-python = ">=3.9"
 dependencies = [
     "gymnasium==1.0.0",
     "tqdm",
-    "wandb"
+    "wandb",
+    "scikit-learn"
 ]
 
 [build-system]
