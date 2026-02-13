@@ -9,9 +9,9 @@ import torch.nn.functional as F
 # GraphPointer Policy Model
 # ----------------------------    
 class GraphPointerPolicy(nn.Module):
-    def __init__(self, node_dim=3, embed_dim=128):
+    def __init__(self, cfg, node_dim=3, embed_dim=128):
         super().__init__()
-
+        self.cfg = cfg
         # -------------------------
         # Añadir NO-OP
         # ------------------------- 
@@ -56,5 +56,6 @@ class GraphPointerPolicy(nn.Module):
         #scores = torch.cat([scores, noop_score], dim=0)  # [N + 1]       
 
         probs = F.softmax(scores, dim=0)
+        if self.cfg.debug: print(f"DEBUG: Action probabilities shape: {probs.cpu().detach().numpy().shape} | Sum: {probs.sum().item():.4f}")
         return probs    
     

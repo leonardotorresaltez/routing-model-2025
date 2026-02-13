@@ -10,6 +10,7 @@ class Config:
     device: str = "cpu"
     wandb: bool = True  # Toggle W&B logging
     data_dir: str = "data_version_1"  # data path
+    debug = False
     
     # --- Model ---
     embed_dim: int = 128
@@ -17,7 +18,7 @@ class Config:
     
     # --- Training ---
     lr: float = 1e-3
-    episodes: int = 200 # 500
+    episodes: int = 200 if not debug else 2
     log_interval: int = 20
     
     def __post_init__(self):

@@ -18,7 +18,7 @@ class REINFORCEAgent:
         self.fleetStatus = fleetStatus
         
         
-        self.policy = GraphPointerPolicy(embed_dim=cfg.embed_dim)
+        self.policy = GraphPointerPolicy(embed_dim=cfg.embed_dim, cfg=cfg)
         self.policy.to(cfg.device)
         self.optimizer = optim.Adam(self.policy.parameters(), lr=cfg.lr)
         
@@ -45,12 +45,22 @@ class REINFORCEAgent:
         
 
     def store_reward(self, reward):
+        if self.cfg.debug: print(f"DEBUG: Storing reward: {reward}")
         self.rewards.append(reward)
 
     def update(self):
         """
         Policy Gradient (REINFORCE)
         """        
+
+        n_probs = len(self.log_probs)
+        n_rewards = len(self.rewards)
+        
+        if self.cfg.debug: print(f"DEBUG: Log_Probs: {n_probs} | Rewards: {n_rewards}")
+
+        assert n_probs == n_rewards, \
+            f"MISALIGNMENT DETECTED! You have {n_probs} actions but {n_rewards} rewards."
+
         R = 0
         policy_loss = []
         returns = []

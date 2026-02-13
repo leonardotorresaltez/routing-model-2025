@@ -75,6 +75,7 @@ def train():
 
         while not (done or terminated):
             action = agent.act(obs)
+            if cfg.debug: print(f"DEBUG: Selected action: {action}")
             obs, reward, done, terminated, _ = env.step(action)            
             agent.store_reward(reward)
             episode_reward += reward
