@@ -135,11 +135,12 @@ class REINFORCEAgent:
         """
         Helper to select the next action or return NO-OP if all nodes are visited.
         """
-        if visited_enriched.all():
-            # NO-OP action, do not call policy as it gets confused
-            return self.fleetStatus.num_nodes()  
         probs = self.policy(nodes, current_node, visited_enriched)
         dist = torch.distributions.Categorical(probs)
         action = dist.sample()
         self.log_probs.append(dist.log_prob(action))
+        if visited_enriched.all():
+            # NO-OP action, do not call policy as it gets confused
+            return self.fleetStatus.num_nodes()  
+
         return action.item()        
