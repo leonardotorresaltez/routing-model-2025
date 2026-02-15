@@ -4,7 +4,7 @@ import random
 import torch.nn.functional as F
 import numpy as np
 from loader_lib.data_loader import FleetStatus
-from .policy import GraphPointerPolicy
+from .policy import FactorizedFleetPolicy, GraphPointerPolicy
 
 # ----------------------------
 # REINFORCEAgent 
@@ -18,7 +18,7 @@ class REINFORCEAgent:
         self.fleetStatus = fleetStatus
         
         
-        self.policy = GraphPointerPolicy(embed_dim=cfg.embed_dim, cfg=cfg)
+        self.policy = FactorizedFleetPolicy(embed_dim=cfg.embed_dim, cfg=cfg)
         self.policy.to(cfg.device)
         self.optimizer = optim.Adam(self.policy.parameters(), lr=cfg.lr)
         
@@ -30,18 +30,28 @@ class REINFORCEAgent:
         nodes = torch.tensor(obs["nodes"], dtype=torch.float32).to(self.cfg.device)
 
         # masking: Calculate valid moves
-        visited_enriched = self._apply_time_constraints(
-            self.fleetStatus.active_truck,
-            self.fleetStatus.trucklist,
-            obs["visited_targets"]
-        )
-        visited_enriched = torch.tensor(visited_enriched, dtype=torch.bool).to(self.cfg.device)
-        current_node = obs["current_trucks"][self.fleetStatus.active_truck]
+        #visited_enriched = self._apply_time_constraints(
+        #    self.fleetStatus.active_truck,
+        #    self.fleetStatus.trucklist,
+        #    obs["visited_targets"]
+        #)
+        visited_targets = obs["visited_targets"]
+        visited_targets = torch.tensor(visited_targets, dtype=torch.bool).to(self.cfg.device)
+        
+        
+        #current_node = obs["current_trucks"][self.fleetStatus.active_truck]
 
         enhanced_features = self._get_enriched_nodes(nodes)
+        # Get truck_positions directly from obs['current_trucks']
+        truck_positions = obs["current_trucks"]
         
-        action_result = self._select_action(enhanced_features, current_node, visited_enriched)
-        return int(action_result)
+        truck, node = self._select_action(enhanced_features, truck_positions, visited_targets)
+        
+        # Check if the selected node is already visited
+        #if visited_targets[node]:
+        #    if self.cfg.debug: print(f"DEBUG: Node {node} is already visited.")
+
+        return int(truck), int(node)
         
 
     def store_reward(self, reward):
@@ -131,13 +141,21 @@ class REINFORCEAgent:
                     mask[next_node] = True
             return mask    
         
-    def _select_action(self, nodes, current_node, visited_enriched):
+    def _select_action(self, nodes, truck_positions, visited_enriched):
         """
         Helper to select the next action or return NO-OP if all nodes are visited.
         """
-        probs = self.policy(nodes, current_node, visited_enriched)
-        dist = torch.distributions.Categorical(probs)
-        action = dist.sample()
-        self.log_probs.append(dist.log_prob(action))
+        truck_probs, node_probs = self.policy(nodes, truck_positions, visited_enriched)
+        # ---- sample truck ----
+        truck_dist = torch.distributions.Categorical(truck_probs)
+        truck = truck_dist.sample()
 
-        return action.item()        
+        # ---- sample node for that truck ----
+        node_dist = torch.distributions.Categorical(node_probs[truck])
+        node = node_dist.sample()
+
+        # ---- log prob joint ----
+        log_prob = truck_dist.log_prob(truck) + node_dist.log_prob(node)
+        self.log_probs.append(log_prob)
+
+        return truck.item(), node.item()

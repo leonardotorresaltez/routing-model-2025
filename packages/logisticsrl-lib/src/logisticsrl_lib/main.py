@@ -48,7 +48,6 @@ def train():
     fleetStatus = FleetStatus(
         truck_starts=truck_starts,
         source_mask=source_mask,
-        active_truck=0,
         time_matrix=data["time_matrix"],
         nodes=nodes
     )
@@ -74,7 +73,8 @@ def train():
 
 
         while not (done or terminated):
-            action = agent.act(obs)
+            truck, node = agent.act(obs)
+            action = (truck, node)
             if cfg.debug: print(f"DEBUG: Selected action: {action}")
             obs, reward, done, terminated, _ = env.step(action)            
             agent.store_reward(reward)
@@ -157,7 +157,7 @@ def report_every_50_episodes(
 
         # Visualization
         G = create_routing_graph(data["depots"], data["customers"], env.fleetStatus.all_tours(), truck_starts)
-        visualize_routing_solution(G, step=episode, title_suffix="Final step", save_path=f"checkpoints/visualization_episode{episode}.html")
+        #visualize_routing_solution(G, step=episode, title_suffix="Final step", save_path=f"checkpoints/visualization_episode{episode}.html")
 
 
 def print_verification_info(nodesObjs, data, truck_starts):

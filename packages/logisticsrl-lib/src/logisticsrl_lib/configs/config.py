@@ -9,7 +9,7 @@ class Config:
     seed: int = 42
     device: str = "cpu"
     wandb: bool = True  # Toggle W&B logging
-    data_dir: str = "data_version_1"  # data path
+    data_dir: str = "data_version_2"  # data path
     debug = False
     
     # --- Model ---

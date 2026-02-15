@@ -44,6 +44,9 @@ class TSPEnv(gym.Env):
             ,
             # Current position of each truck
             "current_trucks": spaces.MultiDiscrete([self.num_nodes] * self.num_trucks)
+            ,
+            # Active truck
+            "active_truck": spaces.Discrete(self.num_trucks),
         })
 
         # ---------- Action space ----------
@@ -65,7 +68,7 @@ class TSPEnv(gym.Env):
         self.visited_targets[self.source_mask] = True      
         
         # truck to act
-        self.fleetStatus.active_truck = 0
+        self.selected_truck = 0
 
         return self._get_obs(), {}
 
@@ -75,11 +78,16 @@ class TSPEnv(gym.Env):
             "is_target": self.target_mask.astype(np.int8),
             "visited_targets": self.visited_targets.astype(np.int8),
             "current_trucks": self.fleetStatus.truck_positions().copy(), #copy to avoid reference issues
+            "active_truck": self.selected_truck,
         }
 
     def step(self, action):
+        
+        self.selected_truck = action[0]
+        selected_node = action[1]
+        
         self.num_steps += 1
-        truck_id = self.fleetStatus.active_truck       
+        truck_id = self.selected_truck       
         terminated = False        
         prev_node = self.fleetStatus.trucklist[truck_id].position
         reward = 0.0
@@ -87,19 +95,23 @@ class TSPEnv(gym.Env):
             reward -=  100.0  # Heavy penalty for NO-OP to encourage visiting customers
         else:
             #reward += 10.0  # Reward for visiting a new target
-            self.fleetStatus.trucklist[truck_id].position = action
-            self.visited_targets[action] = True        
-            self.fleetStatus.trucklist[truck_id].tour.append(action)
+            self.fleetStatus.trucklist[truck_id].position = selected_node
+            self.visited_targets[selected_node] = True        
+            self.fleetStatus.trucklist[truck_id].tour.append(selected_node)
             
-            dist = self.fleetStatus.time_matrix[prev_node, action]
+            dist = self.fleetStatus.time_matrix[prev_node, selected_node]
             reward -= dist
             self.fleetStatus.trucklist[truck_id].total_time += dist
         
+        if self.fleetStatus.trucklist[truck_id].total_time > 24.0:
+            reward -= (float(self.fleetStatus.trucklist[truck_id].total_time) - 24.0) * 500.0
             
         done = self.visited_targets[self.target_mask].all()
 
         # search for next truck that can act, if all exceed 24h, terminate episode
-        self.fleetStatus.active_truck, terminated = self._get_next_truck_id()  
+        #self.fleetStatus.active_truck, terminated = self._get_next_truck_id()  
+        
+        
         if (terminated): #TODO this is not posible because agent avoid it
             print(f"All trucks exceeded 24h xxxx. Terminating episode.")
 
