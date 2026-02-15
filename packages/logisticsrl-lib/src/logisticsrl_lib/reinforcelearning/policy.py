@@ -15,8 +15,8 @@ class GraphPointerPolicy(nn.Module):
         # -------------------------
         # Añadir NO-OP
         # ------------------------- 
-        #self.noop_key = nn.Parameter(torch.randn(embed_dim))
-        #self.noop_bias = nn.Parameter(torch.zeros(1))
+        self.noop_key = nn.Parameter(torch.randn(embed_dim))
+        self.noop_bias = nn.Parameter(torch.zeros(1))
         
         # Node embedding
         self.node_embed = nn.Linear(node_dim, embed_dim)
@@ -47,15 +47,25 @@ class GraphPointerPolicy(nn.Module):
         
         scores = scores.masked_fill(visited_mask, -1e9)
         
-        # -------------------------
-        # Añadir NO-OP
-        # ------------------------- 
-        
-        #noop_score = torch.dot(query, self.noop_key)  + self.noop_bias  # scalar
-        #noop_score = noop_score.view(1)   # fuerza shape [1]
-        #scores = torch.cat([scores, noop_score], dim=0)  # [N + 1]       
+
+
+        # Check if all actions are masked
+        if visited_mask.all():
+            # -------------------------
+            # Add NO-OP action to the scores
+            # ------------------------- 
+            noop_score = torch.dot(query, self.noop_key) + self.noop_bias  # scalar
+            noop_score = noop_score.view(1)  # Ensure shape [1]
+            scores = torch.cat([scores, noop_score], dim=0)  # [N + 1]            
+            
+            num_nodes = visited_mask.shape[0] # is this IF case is same as nodes.shape[0]
+            # Create a NO-OP action probability
+            noop_probs = torch.zeros(num_nodes + 1, device=visited_mask.device)
+            # Assign probability 1 to the NO-OP action at index num_nodes
+            noop_probs[num_nodes] = 1.0
+            return noop_probs
 
         probs = F.softmax(scores, dim=0)
         if self.cfg.debug: print(f"DEBUG: Action probabilities shape: {probs.cpu().detach().numpy().shape} | Sum: {probs.sum().item():.4f}")
-        return probs    
-    
+        return probs
+

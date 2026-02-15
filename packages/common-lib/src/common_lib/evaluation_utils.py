@@ -33,7 +33,7 @@ def evaluate_solution(tours,  data, truck_starts, cfg):
     total_destinations_visited = len(all_destinations_visited)
     total_time = sum(total_times).item()
 
-    print("full_tours:", full_tours)
+    #print("full_tours:", full_tours)
     # print("Nodes: ", data["nodes"])
     full_tours_coords = [[(data["nodes"][node_idx].lat, data["nodes"][node_idx].lon) for node_idx in tour] for tour in full_tours]
     # print("full_tours coordinates:", full_tours_coords)
@@ -62,7 +62,11 @@ def evaluate_solution(tours,  data, truck_starts, cfg):
                     # print(f"Intersection found between edges ({i}, {i+1}) and ({j}, {j+1}) in truck {truck_id}")
                     # print(f"Edge 1: {tour[i]} -> {tour[i+1]}, Edge 2: {tour[j]} -> {tour[j+1]}")
                     total_intersections += 1
-    print(f"Total edge pairs checked: {total_checks}, Total intersections found: {total_intersections}")
-    pct_intersections = total_intersections / total_checks
+    #print(f"Total edge pairs checked: {total_checks}, Total intersections found: {total_intersections}")
+    # Avoid division by zero
+    if total_checks == 0:
+        pct_intersections = 0.0
+    else:
+        pct_intersections = total_intersections / total_checks
                     
     return total_destinations_visited, total_time, pct_intersections

@@ -139,8 +139,5 @@ class REINFORCEAgent:
         dist = torch.distributions.Categorical(probs)
         action = dist.sample()
         self.log_probs.append(dist.log_prob(action))
-        if visited_enriched.all():
-            # NO-OP action, do not call policy as it gets confused
-            return self.fleetStatus.num_nodes()  
 
         return action.item()        
