@@ -20,6 +20,7 @@ class Config:
     lr: float = 1e-3
     episodes: int = 200 if not debug else 2
     log_interval: int = 20
+    gamma = 0.95  # Discount factor for rewards
     
     def __post_init__(self):
         if self.data_dir == "data_version_2":
@@ -31,7 +32,7 @@ class Config:
         # Construct project_name
         self.project_name = f"{self.project_name}_{self.data_dir}"
         # Construct Run Name
-        self.run_name = f"lr{self.lr}_sd{self.seed}"
+        self.run_name = f"lr{self.lr}_gamma{self.gamma}_sd{self.seed}"
 
 def parse_args() -> Config:
     base_cfg = Config()
