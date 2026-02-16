@@ -1,0 +1,44 @@
+
+🚀 Starting PPO Training...
+
+
+Episode    0 | Total reward: -1110.262 | Loss: 619.9431
+Total time: 49.97
+Total destinations visited: 10
+Per-truck time OK: [True, False]
+Saved to checkpoints/visualization_episode0.png
+
+Episode   50 | Total reward: -1000.312 | Loss: 0.2466
+Total time: 44.98
+Total destinations visited: 10
+Per-truck time OK: [True, True]
+Saved to checkpoints/visualization_episode50.png
+
+Episode  100 | Total reward: -755.262 | Loss: 0.0469
+Total time: 44.98
+Total destinations visited: 10
+Per-truck time OK: [True, True]
+Saved to checkpoints/visualization_episode100.png
+
+Episode  150 | Total reward: -760.362 | Loss: 8.2462
+Total time: 44.98
+Total destinations visited: 10
+Per-truck time OK: [True, True]
+Saved to checkpoints/visualization_episode150.png
+
+Episode  200 | Total reward: -1000.262 | Loss: 4.5411
+Total time: 44.98
+Total destinations visited: 10
+Per-truck time OK: [True, True]
+Saved to checkpoints/visualization_episode200.png
+
+Episode  250 | Total reward: -1630.262 | Loss: 2.6850
+Total time: 44.98
+Total destinations visited: 10
+Per-truck time OK: [True, True]
+Saved to checkpoints/visualization_episode250.png
+
+FINAL GREEDY RESULTS
+Total customers visited: 10
+Total time: 44.98 hours
+Per-truck time OK: [True, True]

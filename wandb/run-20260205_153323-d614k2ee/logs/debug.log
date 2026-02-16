@@ -1,0 +1,23 @@
+2026-02-05 15:33:23,436 INFO    MainThread:18400 [wandb_setup.py:_flush():80] Current SDK version is 0.23.1
+2026-02-05 15:33:23,436 INFO    MainThread:18400 [wandb_setup.py:_flush():80] Configure stats pid to 18400
+2026-02-05 15:33:23,436 INFO    MainThread:18400 [wandb_setup.py:_flush():80] Loading settings from C:\Users\thari\.config\wandb\settings
+2026-02-05 15:33:23,437 INFO    MainThread:18400 [wandb_setup.py:_flush():80] Loading settings from H:\AI Course\GNN_VRP\wandb\settings
+2026-02-05 15:33:23,437 INFO    MainThread:18400 [wandb_setup.py:_flush():80] Loading settings from environment variables
+2026-02-05 15:33:23,437 INFO    MainThread:18400 [wandb_init.py:setup_run_log_directory():714] Logging user logs to H:\AI Course\GNN_VRP\wandb\run-20260205_153323-d614k2ee\logs\debug.log
+2026-02-05 15:33:23,437 INFO    MainThread:18400 [wandb_init.py:setup_run_log_directory():715] Logging internal logs to H:\AI Course\GNN_VRP\wandb\run-20260205_153323-d614k2ee\logs\debug-internal.log
+2026-02-05 15:33:23,437 INFO    MainThread:18400 [wandb_init.py:init():841] calling init triggers
+2026-02-05 15:33:23,438 INFO    MainThread:18400 [wandb_init.py:init():846] wandb.init called with sweep_config: {}
+config: {'project_name': 'logistics-rl-poc', 'run_name': 'default', 'seed': 42, 'device': 'cpu', 'wandb': True, 'depot': 0, 'max_steps': 100, 'graph_mode': True, 'embed_dim': 128, 'lr': 0.001, 'episodes': 500, 'log_interval': 20, 'datapath': 'data/data_version_1', 'truck_id': 1, '_wandb': {}}
+2026-02-05 15:33:23,438 INFO    MainThread:18400 [wandb_init.py:init():889] starting backend
+2026-02-05 15:33:25,854 INFO    MainThread:18400 [wandb_init.py:init():892] sending inform_init request
+2026-02-05 15:33:25,901 INFO    MainThread:18400 [wandb_init.py:init():900] backend started and connected
+2026-02-05 15:33:25,945 INFO    MainThread:18400 [wandb_init.py:init():970] updated telemetry
+2026-02-05 15:33:25,946 INFO    MainThread:18400 [wandb_init.py:init():994] communicating run to backend with 90.0 second timeout
+2026-02-05 15:33:26,699 INFO    MainThread:18400 [wandb_init.py:init():1041] starting run threads in backend
+2026-02-05 15:33:27,602 INFO    MainThread:18400 [wandb_run.py:_console_start():2521] atexit reg
+2026-02-05 15:33:27,602 INFO    MainThread:18400 [wandb_run.py:_redirect():2369] redirect: wrap_raw
+2026-02-05 15:33:27,602 INFO    MainThread:18400 [wandb_run.py:_redirect():2438] Wrapping output streams.
+2026-02-05 15:33:27,602 INFO    MainThread:18400 [wandb_run.py:_redirect():2461] Redirects installed.
+2026-02-05 15:33:27,609 INFO    MainThread:18400 [wandb_init.py:init():1081] run started, returning control to user process
+2026-02-05 15:33:27,932 INFO    wandb-AsyncioManager-main:18400 [service_client.py:_forward_responses():80] Reached EOF.
+2026-02-05 15:33:27,932 INFO    wandb-AsyncioManager-main:18400 [mailbox.py:close():137] Closing mailbox, abandoning 1 handles.

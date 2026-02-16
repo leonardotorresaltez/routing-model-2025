@@ -1,0 +1,18 @@
+H:\AI Course\GNN_VRP\training\trainer.py:22: UserWarning: To copy construct from a tensor, it is recommended to use sourceTensor.clone().detach() or sourceTensor.clone().detach().requires_grad_(True), rather than torch.tensor(sourceTensor).
+  state_t = torch.tensor(state, dtype=torch.float32).unsqueeze(0).to(self.device)
+Traceback (most recent call last):
+  File "H:\AI Course\GNN_VRP\main.py", line 61, in <module>
+    main()
+    ~~~~^^
+  File "H:\AI Course\GNN_VRP\main.py", line 52, in main
+    trainer.train()
+    ~~~~~~~~~~~~~^^
+  File "H:\AI Course\GNN_VRP\training\trainer.py", line 72, in train
+    batch = self.collect_rollout()
+  File "H:\AI Course\GNN_VRP\training\trainer.py", line 31, in collect_rollout
+    truck_mask, node_mask = self.env.mask_actions()
+                            ~~~~~~~~~~~~~~~~~~~~~^^
+  File "H:\AI Course\GNN_VRP\envs\gym_env.py", line 69, in mask_actions
+    visited_bool = (self.visited == 1)
+                    ^^^^^^^^^^^^
+AttributeError: 'MDVRPGymEnv' object has no attribute 'visited'

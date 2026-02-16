@@ -1,0 +1,24 @@
+{
+  "os":  "Windows-11-10.0.26100-SP0",
+  "python":  "CPython 3.13.5",
+  "startedAt":  "2026-02-04T16:18:43.497398Z",
+  "program":  "H:\\AI Course\\GNN_VRP\\main.py",
+  "codePath":  "main.py",
+  "codePathLocal":  "main.py",
+  "email":  "tharini.moorthy@estudiantat.upc.edu",
+  "root":  "H:\\AI Course\\GNN_VRP",
+  "host":  "Tharu",
+  "executable":  "C:\\Users\\thari\\anaconda3\\python.exe",
+  "cpu_count":  4,
+  "cpu_count_logical":  8,
+  "disk":  {
+    "/":  {
+      "total":  "429495676928",
+      "used":  "12649304064"
+    }
+  },
+  "memory":  {
+    "total":  "25642057728"
+  },
+  "writerId":  "7kdbz4djfel31dh92m6y5hfidc83qz8j"
+}

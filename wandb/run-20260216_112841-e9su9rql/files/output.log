@@ -1,0 +1,19 @@
+
+🚀 Starting PPO Training...
+
+
+Episode    0 | Total reward: -1280.262 | Loss: 765.3925
+Total time: 32.49
+Total destinations visited: 11
+Per-truck time OK: [True, True]
+Traceback (most recent call last):
+  File "H:\AI Course\GNN_PPO\routing-model-2025-gnn-ppo-one_agent\main.py", line 176, in <module>
+    main()
+    ~~~~^^
+  File "H:\AI Course\GNN_PPO\routing-model-2025-gnn-ppo-one_agent\main.py", line 142, in main
+    G = create_routing_graph(
+        data["depots"],
+    ...<2 lines>...
+        truck_starts=[t.depot_idx for t in data["trucks"]],
+    )
+TypeError: create_routing_graph() missing 3 required positional arguments: 'node_to_idx', 'idx_to_node', and 'time_matrix'

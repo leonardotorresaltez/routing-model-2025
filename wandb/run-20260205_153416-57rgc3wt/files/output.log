@@ -1,0 +1,22 @@
+H:\AI Course\GNN_VRP\core\training\trainer.py:26: UserWarning: To copy construct from a tensor, it is recommended to use sourceTensor.clone().detach() or sourceTensor.clone().detach().requires_grad_(True), rather than torch.tensor(sourceTensor).
+  state_t = torch.tensor(state, dtype=torch.float32).unsqueeze(0).to(self.device)
+Episode 0 | Loss: 612.155 | Policy: 8.443 | Value: 1207.425 | Entropy: 0.049
+H:\AI Course\GNN_VRP\core\training\trainer.py:109: UserWarning: To copy construct from a tensor, it is recommended to use sourceTensor.clone().detach() or sourceTensor.clone().detach().requires_grad_(True), rather than torch.tensor(sourceTensor).
+  torch.tensor(state, dtype=torch.float32).to(self.device),
+Traceback (most recent call last):
+  File "H:\AI Course\GNN_VRP\main.py", line 75, in <module>
+    main()
+    ~~~~^^
+  File "H:\AI Course\GNN_VRP\main.py", line 66, in main
+    trainer.train()
+    ~~~~~~~~~~~~~^^
+  File "H:\AI Course\GNN_VRP\core\training\trainer.py", line 124, in train
+    G = create_routing_graph(
+        self.env.depots,
+    ...<2 lines>...
+        truck_starts
+    )
+  File "H:\AI Course\GNN_VRP\core\utils\visualization_utils.py", line 30, in create_routing_graph
+    G.add_edge(f"D{d_id}", f"C{route[0]}", truck=truck_id)
+                               ~~~~~^^^
+IndexError: list index out of range

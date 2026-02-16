@@ -1,0 +1,43 @@
+2026-02-16 14:37:56,592 INFO    MainThread:20392 [wandb_setup.py:_flush():80] Current SDK version is 0.23.1
+2026-02-16 14:37:56,592 INFO    MainThread:20392 [wandb_setup.py:_flush():80] Configure stats pid to 20392
+2026-02-16 14:37:56,592 INFO    MainThread:20392 [wandb_setup.py:_flush():80] Loading settings from C:\Users\thari\.config\wandb\settings
+2026-02-16 14:37:56,592 INFO    MainThread:20392 [wandb_setup.py:_flush():80] Loading settings from H:\AI Course\GNN_PPO\routing-model-2025-gnn-ppo-one_agent\wandb\settings
+2026-02-16 14:37:56,592 INFO    MainThread:20392 [wandb_setup.py:_flush():80] Loading settings from environment variables
+2026-02-16 14:37:56,592 INFO    MainThread:20392 [wandb_init.py:setup_run_log_directory():714] Logging user logs to H:\AI Course\GNN_PPO\routing-model-2025-gnn-ppo-one_agent\wandb\run-20260216_143756-5tg1ugx9\logs\debug.log
+2026-02-16 14:37:56,593 INFO    MainThread:20392 [wandb_init.py:setup_run_log_directory():715] Logging internal logs to H:\AI Course\GNN_PPO\routing-model-2025-gnn-ppo-one_agent\wandb\run-20260216_143756-5tg1ugx9\logs\debug-internal.log
+2026-02-16 14:37:56,593 INFO    MainThread:20392 [wandb_init.py:init():841] calling init triggers
+2026-02-16 14:37:56,593 INFO    MainThread:20392 [wandb_init.py:init():846] wandb.init called with sweep_config: {}
+config: {'_wandb': {}}
+2026-02-16 14:37:56,593 INFO    MainThread:20392 [wandb_init.py:init():889] starting backend
+2026-02-16 14:37:59,048 INFO    MainThread:20392 [wandb_init.py:init():892] sending inform_init request
+2026-02-16 14:37:59,100 INFO    MainThread:20392 [wandb_init.py:init():900] backend started and connected
+2026-02-16 14:37:59,137 INFO    MainThread:20392 [wandb_init.py:init():970] updated telemetry
+2026-02-16 14:37:59,139 INFO    MainThread:20392 [wandb_init.py:init():994] communicating run to backend with 90.0 second timeout
+2026-02-16 14:38:48,093 ERROR   wandb-AsyncioManager-main:20392 [service_client.py:_forward_responses():77] Error reading server response.
+Traceback (most recent call last):
+  File "C:\Users\thari\anaconda3\Lib\asyncio\windows_events.py", line 463, in finish_socket_func
+    return ov.getresult()
+           ~~~~~~~~~~~~^^
+OSError: [WinError 64] The specified network name is no longer available
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\thari\anaconda3\Lib\site-packages\wandb\sdk\lib\service\service_client.py", line 73, in _forward_responses
+    while response := await self._read_server_response():
+                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\thari\anaconda3\Lib\site-packages\wandb\sdk\lib\service\service_client.py", line 87, in _read_server_response
+    header = await self._reader.readexactly(_HEADER_BYTE_INT_LEN)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\thari\anaconda3\Lib\asyncio\streams.py", line 769, in readexactly
+    await self._wait_for_data('readexactly')
+  File "C:\Users\thari\anaconda3\Lib\asyncio\streams.py", line 539, in _wait_for_data
+    await self._waiter
+  File "C:\Users\thari\anaconda3\Lib\asyncio\proactor_events.py", line 286, in _loop_reading
+    length = fut.result()
+  File "C:\Users\thari\anaconda3\Lib\asyncio\windows_events.py", line 804, in _poll
+    value = callback(transferred, key, ov)
+  File "C:\Users\thari\anaconda3\Lib\asyncio\windows_events.py", line 467, in finish_socket_func
+    raise ConnectionResetError(*exc.args)
+ConnectionResetError: [WinError 64] The specified network name is no longer available
+2026-02-16 14:38:48,107 INFO    wandb-AsyncioManager-main:20392 [mailbox.py:close():137] Closing mailbox, abandoning 2 handles.

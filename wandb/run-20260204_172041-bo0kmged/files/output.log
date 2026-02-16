@@ -1,0 +1,29 @@
+H:\AI Course\GNN_VRP\training\trainer.py:24: UserWarning: To copy construct from a tensor, it is recommended to use sourceTensor.clone().detach() or sourceTensor.clone().detach().requires_grad_(True), rather than torch.tensor(sourceTensor).
+  state_t = torch.tensor(state, dtype=torch.float32).unsqueeze(0).to(self.device)
+Episode 0 | Loss: 4130.749 | Policy: -2.638 | Value: 8266.775 | Entropy: 0.111
+Episode 1 | Loss: 1085.106 | Policy: -1.595 | Value: 2173.408 | Entropy: 0.301
+Episode 2 | Loss: 511.716 | Policy: 12.920 | Value: 997.595 | Entropy: 0.206
+Episode 3 | Loss: 1039.291 | Policy: 28.197 | Value: 2022.191 | Entropy: 0.150
+Episode 4 | Loss: 1277.698 | Policy: 34.587 | Value: 2486.224 | Entropy: 0.188
+Episode 5 | Loss: 893.740 | Policy: 27.546 | Value: 1732.396 | Entropy: 0.317
+Episode 6 | Loss: 549.152 | Policy: 20.491 | Value: 1057.329 | Entropy: 0.329
+Episode 7 | Loss: 210.445 | Policy: 9.668 | Value: 401.560 | Entropy: 0.267
+Episode 8 | Loss: 116.321 | Policy: 3.327 | Value: 225.991 | Entropy: 0.165
+Episode 9 | Loss: 87.262 | Policy: 1.042 | Value: 172.440 | Entropy: 0.058
+Episode 10 | Loss: 134.305 | Policy: -0.007 | Value: 268.626 | Entropy: 0.050
+Episode 11 | Loss: 317.328 | Policy: -0.650 | Value: 635.956 | Entropy: 0.061
+Episode 12 | Loss: 215.413 | Policy: -0.540 | Value: 431.909 | Entropy: 0.086
+Episode 13 | Loss: 265.825 | Policy: -0.520 | Value: 532.693 | Entropy: 0.116
+Episode 14 | Loss: 120.533 | Policy: -0.061 | Value: 241.191 | Entropy: 0.092
+Episode 15 | Loss: 82.327 | Policy: 0.722 | Value: 163.211 | Entropy: 0.092
+Episode 16 | Loss: 59.113 | Policy: 1.632 | Value: 114.965 | Entropy: 0.107
+Episode 17 | Loss: 64.059 | Policy: 5.144 | Value: 117.838 | Entropy: 0.366
+Episode 18 | Loss: 81.661 | Policy: 7.026 | Value: 149.272 | Entropy: 0.159
+Episode 19 | Loss: 142.808 | Policy: 10.736 | Value: 264.151 | Entropy: 0.374
+Episode 20 | Loss: 109.991 | Policy: 8.244 | Value: 203.499 | Entropy: 0.272
+Episode 21 | Loss: 120.605 | Policy: 9.720 | Value: 221.774 | Entropy: 0.248
+Episode 22 | Loss: 74.032 | Policy: 6.510 | Value: 135.049 | Entropy: 0.300
+Episode 23 | Loss: 95.348 | Policy: 7.264 | Value: 176.175 | Entropy: 0.316
+Episode 24 | Loss: 33.900 | Policy: 3.382 | Value: 61.041 | Entropy: 0.242
+Episode 25 | Loss: 62.015 | Policy: 1.176 | Value: 121.680 | Entropy: 0.158
+Episode 26 | Loss: 49.900 | Policy: 1.808 | Value: 96.190 | Entropy: 0.259

@@ -1,0 +1,14 @@
+H:\AI Course\GNN_VRP\training\trainer.py:22: UserWarning: To copy construct from a tensor, it is recommended to use sourceTensor.clone().detach() or sourceTensor.clone().detach().requires_grad_(True), rather than torch.tensor(sourceTensor).
+  state_t = torch.tensor(state, dtype=torch.float32).unsqueeze(0).to(self.device)
+Loss: 737.693 | Policy: -4.641 | Value: 1484.778 | Entropy: 5.508
+Traceback (most recent call last):
+  File "H:\AI Course\GNN_VRP\main.py", line 73, in <module>
+    main()
+    ~~~~^^
+  File "H:\AI Course\GNN_VRP\main.py", line 69, in main
+    trainer.train()
+    ~~~~~~~~~~~~~^^
+  File "H:\AI Course\GNN_VRP\training\trainer.py", line 131, in train
+    "episode_reward": batch["episode_reward"],
+                      ~~~~~^^^^^^^^^^^^^^^^^^
+KeyError: 'episode_reward'
