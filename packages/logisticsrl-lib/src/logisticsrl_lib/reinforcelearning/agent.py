@@ -25,6 +25,7 @@ class REINFORCEAgent:
         # Buffers for REINFORCE
         self.log_probs = []
         self.rewards = []
+        self.entropies = []
 
     def act(self, obs):
         nodes = torch.tensor(obs["nodes"], dtype=torch.float32).to(self.cfg.device)
@@ -84,18 +85,21 @@ class REINFORCEAgent:
         
         for log_prob, R in zip(self.log_probs, returns):
             policy_loss.append(-log_prob * R)
-            
+        
+        mean_entropy = torch.stack(self.entropies).mean()
+
         self.optimizer.zero_grad()
-        loss = torch.stack(policy_loss).sum() #each policy_loss item is a scalar tensor, needs stack to sum
+        policy_loss = torch.stack(policy_loss).sum() #each policy_loss item is a scalar tensor, needs stack to sum
+        loss = policy_loss - self.cfg.entropy_bonus * mean_entropy  # Add entropy bonus to loss
         loss.backward()
         self.optimizer.step()
         
         # Clear buffers
         self.log_probs.clear()
+        self.entropies.clear()
         self.rewards.clear()
-        losint = loss.item()
 
-        return losint
+        return loss.item(), mean_entropy.item()
     
     def _get_enriched_nodes(self, nodes):
         """
@@ -138,6 +142,7 @@ class REINFORCEAgent:
         probs = self.policy(nodes, current_node, visited_enriched)
         dist = torch.distributions.Categorical(probs)
         action = dist.sample()
+        self.entropies.append(dist.entropy())
         self.log_probs.append(dist.log_prob(action))
 
         return action.item()        

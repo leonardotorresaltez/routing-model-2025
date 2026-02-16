@@ -84,7 +84,7 @@ def train():
         total_destinations_visited, total_time, pct_intersections = evaluate_solution(env.fleetStatus.all_tours(), data, truck_starts, cfg)                
 
 
-        loss = agent.update()
+        loss, entropy = agent.update()
 
         report_every_50_episodes(
             episode,
@@ -105,6 +105,7 @@ def train():
             wandb.log({
                 "Total reward": episode_reward,
                 "Last Loss": loss,
+                "Mean Entropy": entropy,
                 "Episode": episode,
                 "Total time": total_time,
                 "Total destinations visited": total_destinations_visited,

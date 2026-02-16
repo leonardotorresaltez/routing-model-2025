@@ -18,9 +18,10 @@ class Config:
     
     # --- Training ---
     lr: float = 1e-3
-    episodes: int = 200 if not debug else 2
+    episodes: int = 300 if not debug else 2
     log_interval: int = 20
-    gamma = 0.95  # Discount factor for rewards
+    gamma: float = 0.95  # Discount factor for rewards
+    entropy_bonus: float = 0.01  # Coefficient for entropy bonus to encourage exploration
     
     def __post_init__(self):
         if self.data_dir == "data_version_2":
