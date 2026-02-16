@@ -86,7 +86,7 @@ class TSPEnv(gym.Env):
         if action==self.num_nodes: # NO-OP action
             reward -=  100.0  # Heavy penalty for NO-OP to encourage visiting customers
         else:
-            #reward += 10.0  # Reward for visiting a new target
+            reward += 10.0  # Reward for visiting a new target
             self.fleetStatus.trucklist[truck_id].position = action
             self.visited_targets[action] = True        
             self.fleetStatus.trucklist[truck_id].tour.append(action)
