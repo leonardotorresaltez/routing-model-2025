@@ -50,8 +50,7 @@ class Node:
 @dataclass
 class Customer(Node):
     road_access_type: str
-    delivered: bool = False
-    cluster_id: int = None   # <-- ADDED
+    delivered: bool = False  # <-- ADDED
 
 @dataclass
 class Truck:
@@ -70,7 +69,7 @@ class Truck:
 @dataclass
 class Depot(Node):
     truck_fleet: List[int] = field(default_factory=list)
-    cluster_id: int = 0   # <-- Depots belong to cluster 0 by default
+    cluster_id: int = 0 
 
 class MDVRPDataLoader:
     def __init__(self, data_dir=None):
@@ -88,34 +87,25 @@ class MDVRPDataLoader:
 
     def load_data(self) -> Dict:
 
-        # -----------------------------
-        # STEP 1 — Load CSVs
-        # -----------------------------
         depot_df = pd.read_csv(os.path.join(self.data_dir, "selected_depot.csv"))
         customer_df = pd.read_csv(os.path.join(self.data_dir, "selected_customers.csv"))
         truck_df = pd.read_csv(os.path.join(self.data_dir, "selected_trucks.csv"))
 
-        # -----------------------------
-        # STEP 2 — Run KMeans Clustering
-        # -----------------------------
+  
         num_clusters = len(truck_df) 
         cust_coords = customer_df[['latitude', 'longitude']].values
 
         kmeans = KMeans(n_clusters=num_clusters, random_state=42)
         customer_df['cluster_id'] = kmeans.fit_predict(cust_coords)
 
-        # -----------------------------
-        # STEP 3 — Map IDs to indices
-        # -----------------------------
+
         all_node_ids = list(depot_df["id_depot"]) + list(customer_df["id_customer"])
         self.node_to_idx = {node_id: i for i, node_id in enumerate(all_node_ids)}
         self.idx_to_node = {i: node_id for node_id, i in self.node_to_idx.items()}
 
         num_nodes = len(all_node_ids)
 
-        # -----------------------------
-        # STEP 4 — Create Depot objects
-        # -----------------------------
+
         depots = []
         for _, r in depot_df.iterrows():
             idx = self.node_to_idx[r["id_depot"]]
@@ -123,9 +113,6 @@ class MDVRPDataLoader:
             d.cluster_id = 0  # depots belong to cluster 0
             depots.append(d)
 
-        # -----------------------------
-        # STEP 5 — Create Customer objects
-        # -----------------------------
         customers = []
         for _, r in customer_df.iterrows():
             idx = self.node_to_idx[r["id_customer"]]
@@ -136,12 +123,10 @@ class MDVRPDataLoader:
                 r["longitude"],
                 r["vehicle_access_type"],
             )
-            c.cluster_id = int(r["cluster_id"])   # <-- ADD CLUSTER ID
+            c.cluster_id = int(r["cluster_id"]) 
             customers.append(c)
 
-        # -----------------------------
-        # STEP 6 — Create Truck objects
-        # -----------------------------
+      
         trucks = []
         for _, r in truck_df.iterrows():
             d_idx = self.node_to_idx[r["id_depot"]]
@@ -149,9 +134,7 @@ class MDVRPDataLoader:
             trucks.append(t)
             depots[d_idx].truck_fleet.append(t.id)
 
-        # -----------------------------
-        # STEP 7 — Build node list
-        # -----------------------------
+ 
         nodes: List[Node] = [None] * num_nodes
         for d in depots:
             d.isSource = True
@@ -160,9 +143,6 @@ class MDVRPDataLoader:
             c.isSource = False
             nodes[c.idx] = c
 
-        # -----------------------------
-        # STEP 8 — Build Travel Time Matrix
-        # -----------------------------
         time_matrix = np.zeros((num_nodes, num_nodes))
         time_files = glob.glob(os.path.join(self.data_dir, "time_between_nodes_*.csv"))
 
@@ -174,9 +154,7 @@ class MDVRPDataLoader:
                     i, j = self.node_to_idx[id1], self.node_to_idx[id2]
                     time_matrix[i, j] = time_matrix[j, i] = r["time_h"]
 
-        # -----------------------------
-        # STEP 9 — Build Node Features
-        # -----------------------------
+      
         coords = torch.tensor([[n.lat, n.lon] for n in nodes], dtype=torch.float32)
         demands = torch.tensor([0.0 if n.isSource else 1.0 for n in nodes], dtype=torch.float32).unsqueeze(1)
         visited = torch.zeros((num_nodes, 1), dtype=torch.float32)
@@ -187,10 +165,8 @@ class MDVRPDataLoader:
         ).unsqueeze(1)
 
         node_features = torch.cat([coords, demands, visited, cluster_ids], dim=1)
-
-        # -----------------------------
-        # RETURN EVERYTHING
-        # -----------------------------
+        node_to_cluster = {n.idx: n.cluster_id for n in nodes}
+       
         return {
             "node_features": node_features,
             "coords": coords,
@@ -202,6 +178,7 @@ class MDVRPDataLoader:
             "nodes": nodes,
             "trucks": trucks,
             "num_nodes": num_nodes,
+            "node_to_cluster":node_to_cluster,
             "node_to_idx": self.node_to_idx,
             "idx_to_node": self.idx_to_node,
             "kmeans": kmeans,

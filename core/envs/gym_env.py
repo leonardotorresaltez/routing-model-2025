@@ -34,7 +34,7 @@ class MDVRPGymEnv:
 
         # node_features already contains: [lat, lon, demand, visited, cluster_id]
         state = self.node_features.clone()
-        state[:, 3] = visited_mask.squeeze(1)  # update visited flag
+        state[:, 3] = visited_mask.squeeze(1) 
 
         return state
     def _all_customers_visited(self):
@@ -58,14 +58,13 @@ class MDVRPGymEnv:
         reward -= 0.01 * travel_time
 
         # customer visit reward
-        if node not in self.truck_starts:
-            if first_visit:
-                reward += 50.0
-            else:
-                reward -= 5.0
 
+        if first_visit:
+            reward += 500.0
+        else:
+            reward -= 20.0
         if time_violation:
-            reward -= 100.0
+            reward -= 500.0
 
         return reward
 
@@ -92,14 +91,12 @@ class MDVRPGymEnv:
 
         reward = self._compute_reward(travel_time, next_node, first_visit, time_violation)
 
-        # -----------------------------
-        # CLUSTER REWARD (ADDED)
-        # -----------------------------
+   
         current_cluster = int(self.node_features[current_node, 4].item())
         next_cluster = int(self.node_features[next_node, 4].item())
 
         if current_cluster == next_cluster:
-            reward += 10.0
+            reward += 20.0
         else:
             reward -= 10.0
 
@@ -114,7 +111,7 @@ class MDVRPGymEnv:
                 reward -= 20.0
 
         if self._all_customers_visited():
-            reward += 2000.0
+            reward += 5000.0
 
         self.current_step += 1
         done = self._is_done(time_violation)
@@ -128,7 +125,7 @@ class MDVRPGymEnv:
             total_customers = self.num_nodes - num_depots
             visited = int(self.visited_customers.sum().item())
             unvisited = total_customers - visited
-            reward -= unvisited * 200.0
+            reward -= unvisited * 50.0
 
         return self.get_state(), reward, done, {}
 

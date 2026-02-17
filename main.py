@@ -1,3 +1,6 @@
+import os
+os.environ["OMP_NUM_THREADS"] = "1"
+os.environ["MKL_NUM_THREADS"] = "1"
 import torch
 
 from core.utils.data_loader import MDVRPDataLoader
@@ -33,9 +36,10 @@ class Config:
 def main():
     cfg = Config()
     #data with clustering
+    print("K-Means is processing")
     loader = MDVRPDataLoader()
     data = loader.load_data()
-
+    print("Data loaded succesfully")
     num_nodes = data["num_nodes"]
     num_trucks = len(data["trucks"])
     input_dim = data["node_features"].shape[1]   # 5: lat, lon, demand, visited, cluster_id
@@ -72,9 +76,10 @@ def main():
         device=cfg.device,
     )
 
-   
+    print("Started trainer")
     trainer = Trainer(env, policy, ppo_agent, edge_index, cfg)
     for episode in range(cfg.episodes):
+        
         batch = trainer.collect_rollout()
         stats = ppo_agent.update(batch)
         ep_return = batch["rewards"].sum().item()

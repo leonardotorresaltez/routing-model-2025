@@ -1,49 +1,51 @@
 from copy import deepcopy
-import torch
 def evaluate_solution(env, data, truck_starts, cfg):
-   
-
     time_matrix = data["time_matrix"]  
     num_trucks = len(env.tours)
+    depot_set = set(truck_starts) # Fast lookup for depots
 
-    #check for end at depots
     full_tours = deepcopy(env.tours)
+    
+    # Ensure every tour ends at its respective depot
     for i in range(num_trucks):
         if full_tours[i][-1] != truck_starts[i]:
             full_tours[i].append(truck_starts[i])
 
     total_times = []
     per_truck_ok = []
+    all_actual_customers_visited = []
 
-    #Per truck time
     for truck_id, tour in enumerate(full_tours):
-        # Must start at its depot
+        # 1. Validate start
         if tour[0] != truck_starts[truck_id]:
-            raise ValueError(
-                f"Truck {truck_id} did not start at its depot: "
-                f"started at {tour[0]}, should start at {truck_starts[truck_id]}"
-            )
+            raise ValueError(f"Truck {truck_id} started at {tour[0]}, not {truck_starts[truck_id]}")
 
+        # 2. Calculate time
         total_time_truck = 0.0
         for i in range(len(tour) - 1):
-            from_node = tour[i]
-            to_node = tour[i + 1]
-            travel_time = float(time_matrix[from_node, to_node].item())
-            total_time_truck += travel_time
+            u, v = tour[i], tour[i+1]
+            total_time_truck += float(time_matrix[u, v].item())
+            
+            # Collect customers only
+            if v not in depot_set:
+                all_actual_customers_visited.append(v)
 
         total_times.append(total_time_truck)
         per_truck_ok.append(total_time_truck <= cfg.max_daily_delivery_time_each_truck)
 
-
-    all_destinations_visited = [
-        node for tour in full_tours for node in tour[1:-1]
-    ]
-
-    if len(set(all_destinations_visited)) != len(all_destinations_visited):
+    # 3. Check for double visits among CUSTOMERS only
+    if len(set(all_actual_customers_visited)) != len(all_actual_customers_visited):
+      
+        from collections import Counter
+        counts = Counter(all_actual_customers_visited)
+        dupes = [node for node, count in counts.items() if count > 1]
+        print(f"⚠️ Duplicate customers found: {dupes}")
         raise ValueError("Some destinations were visited more than once!")
 
-    total_destinations_visited = len(all_destinations_visited)
+    total_destinations_visited = len(all_actual_customers_visited)
     total_time = sum(total_times)
+    
+  
 
     nodes = data["nodes"]
     full_tours_coords = [
