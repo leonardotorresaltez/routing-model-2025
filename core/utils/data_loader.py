@@ -98,7 +98,7 @@ class MDVRPDataLoader:
         # -----------------------------
         # STEP 2 — Run KMeans Clustering
         # -----------------------------
-        num_clusters = 2  # You can change this based on trucks
+        num_clusters = len(truck_df) 
         cust_coords = customer_df[['latitude', 'longitude']].values
 
         kmeans = KMeans(n_clusters=num_clusters, random_state=42)
