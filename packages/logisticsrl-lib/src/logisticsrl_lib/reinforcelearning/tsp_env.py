@@ -100,8 +100,10 @@ class TSPEnv(gym.Env):
 
         # search for next truck that can act, if all exceed 24h, terminate episode
         self.fleetStatus.active_truck, terminated = self._get_next_truck_id()  
-        if (terminated): #TODO this is not posible because agent avoid it
-            print(f"All trucks exceeded 24h xxxx. Terminating episode.")
+        if self.cfg.debug: 
+            print("DEBUG: Next active truck:", self.fleetStatus.active_truck, "Terminated:", terminated)
+            if (terminated): #TODO this is not posible because agent avoid it
+                print(f"No more feasible actions. Terminating episode.")
 
         #unvisited_count = (self.visited_targets == False).sum().item()
         #reward -= (unvisited_count * 500.0) # Heavy penalty # Goal: maximize clients
@@ -111,13 +113,21 @@ class TSPEnv(gym.Env):
         if self.num_steps >= self.num_nodes+500:
             terminated = True
             reward -= 1000 # Heavy penalty for too many steps (to prevent infinite loops)
+            if self.cfg.debug: print(f"DEBUG: Too many steps ({self.num_steps}). Terminating episode with penalty.")
         return self._get_obs(), reward, done, terminated, {}
     
     
     def _get_next_truck_id(self):
         next_truck = (self.fleetStatus.active_truck + 1) % self.num_trucks
         for _ in range(self.num_trucks):
-            if self.fleetStatus.trucklist[next_truck].total_time <= 24:   #TODO this is not posible because agent avoid it, but we need to check it anyway
+            current_time = self.fleetStatus.trucklist[next_truck].total_time
+            times_to_other_nodes = self.fleetStatus.time_matrix[self.fleetStatus.trucklist[next_truck].position]  # Time to all nodes from current position
+            coming_back_times = self.fleetStatus.time_matrix[:, self.fleetStatus.trucklist[next_truck].tour[0]]  # Time to return to depot from all nodes
+            potential_times = current_time + times_to_other_nodes + coming_back_times
+            visited_mask = torch.tensor(self.visited_targets).bool()
+            min_potential_time = potential_times.masked_fill(visited_mask, float('inf')).min()
+            if min_potential_time <= self.cfg.max_daily_delivery_time_each_truck:   #TODO this is not posible because agent avoid it, but we need to check it anyway
+                if self.cfg.debug: print(f"DEBUG: Truck {next_truck} can act (current_time={current_time:.2f}h, min_potential_time={min_potential_time:.2f}h).")
                 return next_truck, False
             next_truck = (next_truck + 1) % self.num_trucks
         # If all trucks exceed 24h, return -1 and terminated
