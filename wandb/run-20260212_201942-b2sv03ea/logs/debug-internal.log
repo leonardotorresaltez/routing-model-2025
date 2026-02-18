@@ -1,7 +1,0 @@
-{"time":"2026-02-12T20:19:44.8340357+01:00","level":"INFO","msg":"stream: starting","core version":"0.23.1"}
-{"time":"2026-02-12T20:19:45.1681173+01:00","level":"INFO","msg":"stream: created new stream","id":"b2sv03ea"}
-{"time":"2026-02-12T20:19:45.1681173+01:00","level":"INFO","msg":"handler: started","stream_id":"b2sv03ea"}
-{"time":"2026-02-12T20:19:45.1698592+01:00","level":"INFO","msg":"stream: started","id":"b2sv03ea"}
-{"time":"2026-02-12T20:19:45.1698592+01:00","level":"INFO","msg":"writer: started","stream_id":"b2sv03ea"}
-{"time":"2026-02-12T20:19:45.1698592+01:00","level":"INFO","msg":"sender: started","stream_id":"b2sv03ea"}
-{"time":"2026-02-13T10:54:42.8894371+01:00","level":"INFO","msg":"api: retrying error","error":"Post \"https://api.wandb.ai/files/leonardo-torres-altez-2023/logistics-rl-poc/b2sv03ea/file_stream\": context deadline exceeded (Client.Timeout exceeded while awaiting headers)"}

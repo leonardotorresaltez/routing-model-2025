@@ -1,0 +1,21 @@
+# --- Python Specific ---
+# Ignores all compiled Python files
+__pycache__/
+*.pyc
+
+# --- Experiment Tracking ---
+# Ignores all WandB logs and metadata
+wandb/
+
+# --- Project Specific Outputs ---
+# Ignores generated route visualizations
+checkpoints/*.png
+
+# --- General ---
+# (Optional) If you have a virtual environment
+venv/
+.env
+wandb/
+**/__pycache__/
+*.pyc
+checkpoints/*.png
