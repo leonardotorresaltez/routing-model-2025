@@ -24,7 +24,7 @@ class Config:
     eps_clip = 0.2
     value_coef = 0.5
     entropy_coef = 0.01
-    episodes = 300
+    episodes = 500
     max_daily_delivery_time_each_truck = 24.0
 
     # wandb-related
@@ -63,21 +63,22 @@ def main():
     ).to(cfg.device)
 
     ppo_agent = PPOAgent(
-        policy=policy,
-        input_dim=input_dim,
-        hidden_dim=cfg.hidden_dim,
-        num_trucks=num_trucks,
-        num_nodes=num_nodes,
-        lr=cfg.lr,
-        gamma=cfg.gamma,
-        eps_clip=cfg.eps_clip,
-        value_coef=cfg.value_coef,
-        entropy_coef=cfg.entropy_coef,
-        device=cfg.device,
-    )
+    policy_class=GNNPolicy,  
+    input_dim=input_dim,
+    hidden_dim=cfg.hidden_dim,
+    num_trucks=num_trucks,
+    num_nodes=num_nodes,
+    lr=cfg.lr,
+    gamma=cfg.gamma,
+    eps_clip=cfg.eps_clip,
+    value_coef=cfg.value_coef,
+    entropy_coef=cfg.entropy_coef,
+    device=cfg.device,
+)
 
     print("Started trainer")
-    trainer = Trainer(env, policy, ppo_agent, edge_index, cfg)
+#    trainer = Trainer(env, policy, ppo_agent, edge_index, cfg)
+    trainer = Trainer(env,ppo_agent,edge_index,cfg)
     for episode in range(cfg.episodes):
         
         batch = trainer.collect_rollout()
@@ -92,7 +93,7 @@ def main():
             )
 
             # Run greedy rollout for visualization
-            greedy_env = run_greedy_episode(env, policy, edge_index, cfg, cfg.device)
+            greedy_env = run_greedy_episode(env, ppo_agent.policy, edge_index, cfg, cfg.device)
 
             # Evaluate solution
             visited, total_time, per_truck_ok = evaluate_solution(
