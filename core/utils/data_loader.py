@@ -74,7 +74,7 @@ class Depot(Node):
 class MDVRPDataLoader:
     def __init__(self, data_dir=None):
         if data_dir is None:
-            self.data_dir = Path(__file__).resolve().parent.parent.parent / "data" / "data_version_3"
+            self.data_dir = Path(__file__).resolve().parent.parent.parent / "data" / "data_version_1"
         else:
             data_dir_path = Path(data_dir)
             if data_dir_path.is_absolute():

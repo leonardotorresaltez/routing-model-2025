@@ -4,8 +4,8 @@ from gymnasium import spaces
 import numpy as np
 
 class MDVRPGymEnv(gym.Env):
-    def __init__(self, data, max_steps=1000, max_daily_time=24.0):
-        super().__init__() # Initialize the parent class
+    def __init__(self, data, max_steps=150, max_daily_time=12.0):
+        super().__init__()
         self.data = data
         self.max_steps = max_steps
         self.max_daily_time = max_daily_time
@@ -19,7 +19,6 @@ class MDVRPGymEnv(gym.Env):
         self.time_matrix = data["time_matrix"]
         self.truck_starts = [t.depot_idx for t in self.trucks]
 
-        # Fix: Box bounds should not be infinity for stable training
         self.observation_space = spaces.Box(
             low=-1e6, high=1e6,
             shape=(self.num_nodes, self.node_features.shape[1]),
@@ -29,7 +28,6 @@ class MDVRPGymEnv(gym.Env):
         self.action_space = spaces.MultiDiscrete([self.num_trucks, self.num_nodes])
 
     def reset(self, seed=None, options=None):
-        # Gymnasium reset logic
         super().reset(seed=seed)
         
         self.truck_positions = [start for start in self.truck_starts]
@@ -37,47 +35,53 @@ class MDVRPGymEnv(gym.Env):
         self.visited_customers = torch.zeros(self.num_nodes, dtype=torch.float32)
         self._tours = [[start] for start in self.truck_starts]
         self.current_step = 0
-        
-        # FIX: Return (state, info)
         return self.get_state(), self._get_info()
 
     def step(self, action):
         truck_id, next_node = action
-        truck_id = int(truck_id)
-        next_node = int(next_node)
-
+        truck_id, next_node = int(truck_id), int(next_node)
         current_node = self.truck_positions[truck_id]
         travel_time = float(self.time_matrix[current_node, next_node])
         
-        # Update State
-        self.truck_times[truck_id] += travel_time
+        potential_time = self.truck_times[truck_id] + travel_time
+        if potential_time > self.max_daily_time:
+            return self.get_state(), -100.0, False, False, self._get_info()
+
+        self.truck_times[truck_id] = potential_time
         self.truck_positions[truck_id] = next_node
         self._tours[truck_id].append(next_node)
 
-        # Logic Checks
         is_customer = next_node not in self.truck_starts
         first_visit = (is_customer and self.visited_customers[next_node] == 0)
         
+        reward = -0.1 * travel_time 
+        
         if is_customer:
-            self.visited_customers[next_node] = 1.0
-
-        time_violation = self.truck_times[truck_id] > self.max_daily_time
-
-        # Rewards
-        reward = self._compute_reward(travel_time, next_node, first_visit, time_violation, current_node)
-
+            if first_visit:
+                self.visited_customers[next_node] = 1.0
+                reward += 1000.0 
+                truck_cluster = truck_id 
+                cluster_mask = (self.node_features[:, 4] == truck_cluster)
+                is_customer_mask = torch.ones(self.num_nodes, dtype=torch.bool)
+                for depot in self.truck_starts: is_customer_mask[depot] = False
+                cluster_customers = cluster_mask & is_customer_mask
+                if torch.all(self.visited_customers[cluster_customers] == 1.0):
+                    reward += 2000.0 
+            else:
+                reward -= 10.0 
+        
         self.current_step += 1
         
-        # Gymnasium Logic: Separate Terminal from Truncated
-        terminated = self._all_customers_visited() or time_violation
+        all_trucks_done = all(t >= self.max_daily_time - 0.5 for t in self.truck_times)
+        terminated = self._all_customers_visited() or all_trucks_done
         truncated = self.current_step >= self.max_steps
         
-        # Add terminal logic rewards
         if terminated or truncated:
             reward += self._compute_terminal_penalties()
 
-        # FIX: Return 5 values: (obs, reward, terminated, truncated, info)
         return self.get_state(), float(reward), terminated, truncated, self._get_info()
+
+    
 
     def get_state(self):
         state = self.node_features.clone()
@@ -85,7 +89,7 @@ class MDVRPGymEnv(gym.Env):
         return state
 
     def _get_info(self):
-        # Helpful for debugging/logging
+       
         return {
             "step": self.current_step,
             "visited_count": int(self.visited_customers.sum().item()),
@@ -105,16 +109,23 @@ class MDVRPGymEnv(gym.Env):
         return reward
 
     def _compute_terminal_penalties(self):
-        penalty = 0.0
-        # Penalty for empty trucks
-        for t_id in range(self.num_trucks):
-            if len(self._tours[t_id]) == 1: penalty -= 300.0
+        bonus_or_penalty = 0.0
         
-        # Penalty for unvisited customers
-        unvisited = (self.num_nodes - len(self.depots)) - self.visited_customers.sum().item()
-        penalty -= unvisited * 50.0
-        return penalty
+        for t_id in range(self.num_trucks):
+            if self.truck_positions[t_id] in self.truck_starts:
+                if len(self._tours[t_id]) > 1:
+                    bonus_or_penalty += 500.0
+            else:
+                bonus_or_penalty -= 200.0
+        for t_time in self.truck_times:
+            time_saved = max(0, self.max_daily_time - t_time)
+            bonus_or_penalty += (time_saved * 100.0)
 
+        unvisited = (self.num_nodes - len(self.depots)) - self.visited_customers.sum().item()
+        bonus_or_penalty -= unvisited * 1000.0 
+        
+        return bonus_or_penalty
+       
     def _all_customers_visited(self):
         return self.visited_customers.sum().item() >= (self.num_nodes - len(self.depots))
 
@@ -125,8 +136,14 @@ class MDVRPGymEnv(gym.Env):
     def mask_actions(self):
         truck_mask = torch.zeros(self.num_trucks, dtype=torch.bool)
         node_mask = torch.zeros(self.num_nodes, dtype=torch.bool)
+
+        #Mask customers already visited
         node_mask[self.visited_customers == 1] = True
-        for t_id, depot_idx in enumerate(self.truck_starts):
-            if self.truck_positions[t_id] != depot_idx:
-                node_mask[depot_idx] = True
+
+        #Mask trucks that are out of time
+        for t_id in range(self.num_trucks):
+            # if truck has less than 0.5h left, consider it done
+            if self.truck_times[t_id] >= self.max_daily_time - 0.5:
+                truck_mask[t_id] = True
+                
         return truck_mask, node_mask

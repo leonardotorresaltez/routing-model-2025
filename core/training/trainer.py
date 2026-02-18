@@ -4,34 +4,24 @@ from torch.distributions import Categorical
 class Trainer:
     def __init__(self, env, ppo_agent, edge_index, cfg):
         self.env = env
-        self.ppo = ppo_agent # This now contains the policy
+        self.ppo = ppo_agent 
         self.edge_index = edge_index.to(cfg.device)
         self.cfg = cfg
         self.device = cfg.device
 
     def collect_rollout(self):
-        # Arrays to store trajectory data
         states, truck_actions, node_actions, rewards, masks, log_probs = [], [], [], [], [], []
-        
-        # Gymnasium reset returns (obs, info)
         state, info = self.env.reset()
-        
-        # Configuration for cluster masking
         truck_cluster_map = {i: i for i in range(self.env.num_trucks)}
-        cluster_ids = self.env.data["node_features"][:, 4].to(self.device) # Assuming index 4 is cluster
-        
-        # Pre-calculate depot locations for masking
+        cluster_ids = self.env.data["node_features"][:, 4].to(self.device) 
         is_depot = torch.zeros(self.env.num_nodes, dtype=torch.bool, device=self.device)
         for start_node in self.env.truck_starts:
             is_depot[start_node] = True
 
         for step in range(self.env.max_steps):
-            # 1. Prepare state for policy
-            # state is currently a numpy array from Gym, convert to tensor
             state_tensor = torch.FloatTensor(state).to(self.device) 
             
             with torch.no_grad():
-                # Policy head (truck_logits, node_logits, value)
                 truck_logits, node_logits, _ = self.ppo.policy(state_tensor, self.edge_index)
 
            #Mask 

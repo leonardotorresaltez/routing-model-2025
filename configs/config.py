@@ -9,11 +9,11 @@ class Config:
     seed: int = 42
     device: str = "cpu"
     wandb: bool = True  # Toggle W&B logging
-    data_dir: str = "data_version_3"  # data path
+    data_dir: str = "data_version_1"  # data path
     
     # --- Model ---
     embed_dim: int = 128
-    max_daily_delivery_time_each_truck: int = 24  # hours
+    max_daily_delivery_time_each_truck: int = 12  # hours
     
     # --- Training ---
     lr: float = 1e-3

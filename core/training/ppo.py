@@ -35,10 +35,8 @@ class PPOAgent:
         """Selects action using the current policy with optional masking."""
         with torch.no_grad():
             state = torch.FloatTensor(state).to(self.device)
-            # Policy should return: truck_logits, node_logits, state_value
             truck_logits, node_logits, value = self.policy(state, edge_index)
 
-            # Apply masks if provided (setting logit to a very large negative)
             if truck_mask is not None:
                 truck_logits[truck_mask] = -1e10
             if node_mask is not None:
@@ -64,7 +62,6 @@ class PPOAgent:
         return torch.FloatTensor(returns).to(self.device)
 
     def update(self, batch):
-        # batch should contain: states, truck_acts, node_acts, log_probs_old, rewards, masks, edge_index
         states = batch["states"].to(self.device)
         truck_actions = batch["truck_actions"].to(self.device)
         node_actions = batch["node_actions"].to(self.device)
@@ -73,24 +70,17 @@ class PPOAgent:
         masks = batch["masks"] # (1 - terminated)
         edge_index = batch["edge_index"].to(self.device)
 
-        # 1. Compute Returns & Advantages
+
         returns = self._compute_returns(rewards, masks)
-        
-        # 2. Get current policy output
-        # Re-running the policy for the whole batch
         truck_logits, node_logits, values = self.policy(states, edge_index)
         values = values.squeeze()
 
-        # 3. Calculate Log Probs and Entropy for Multi-Discrete
         truck_dist = Categorical(logits=truck_logits)
         node_dist = Categorical(logits=node_logits)
         
         log_probs = truck_dist.log_prob(truck_actions) + node_dist.log_prob(node_actions)
         entropy = (truck_dist.entropy() + node_dist.entropy()).mean()
-
-        # 4. PPO Loss
         advantages = (returns - values.detach())
-        # Standardize advantages for stability
         advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
 
         ratio = torch.exp(log_probs - log_probs_old)
@@ -99,16 +89,12 @@ class PPOAgent:
 
         policy_loss = -torch.min(surr1, surr2).mean()
         value_loss = nn.MSELoss()(values, returns)
-
-        # 5. Total Loss & Optimization
         loss = policy_loss + self.value_coef * value_loss - self.entropy_coef * entropy
 
         self.optimizer.zero_grad()
         loss.backward()
         nn.utils.clip_grad_norm_(self.policy.parameters(), 0.5)
         self.optimizer.step()
-
-        # Update old policy
         self.old_policy.load_state_dict(self.policy.state_dict())
 
         return {

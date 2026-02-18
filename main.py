@@ -25,7 +25,7 @@ class Config:
     value_coef = 0.5
     entropy_coef = 0.01
     episodes = 500
-    max_daily_delivery_time_each_truck = 24.0
+    max_daily_delivery_time_each_truck =12.0
 
     # wandb-related
     wandb = True          # set to False to disable logging
@@ -54,7 +54,7 @@ def main():
 
    
     edge_index = build_edge_index(num_nodes).to(cfg.device)
-    env = MDVRPGymEnv(data, max_steps=1000, max_daily_time=24.0)
+    env = MDVRPGymEnv(data, max_steps=150, max_daily_time=12.0)
     policy = GNNPolicy(
         input_dim=input_dim,
         hidden_dim=cfg.hidden_dim,
