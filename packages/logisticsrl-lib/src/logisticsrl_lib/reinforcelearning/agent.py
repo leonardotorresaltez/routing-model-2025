@@ -27,6 +27,10 @@ class REINFORCEAgent:
         self.rewards = []
         self.entropies = []
 
+        self.step_count = 0
+        self.running_mean = 0.0
+        self.running_var = 0.0
+
     def act(self, obs):
         nodes = torch.tensor(obs["nodes"], dtype=torch.float32).to(self.cfg.device)
 
@@ -79,9 +83,33 @@ class REINFORCEAgent:
             returns.insert(0, R)
             
         returns = torch.tensor(returns).to(self.cfg.device)
-        # Normalize returns for stability
-        returns = returns.float()
-        returns = (returns - returns.mean()) / (returns.std() + 1e-9)
+
+        # 1. Calculate Batch Stats
+        batch_mean = returns.mean().item()
+        
+        # If the episode only had 1 step, variance is undefined (NaN). Default to 0.
+        if len(returns) > 1:
+            batch_var = returns.var(unbiased=False).item()
+        else:
+            batch_var = 0.0
+
+        # 2. Increment Step for Bias Correction
+        self.step_count += 1
+        correction_factor = 1.0 - (self.cfg.beta ** self.step_count)
+
+        # 3. Update Moving Averages (EMA)
+        self.running_mean = self.cfg.beta * self.running_mean + (1 - self.cfg.beta) * batch_mean
+        self.running_var = self.cfg.beta * self.running_var + (1 - self.cfg.beta) * batch_var
+
+        # 4. Apply Bias Correction
+        corrected_mean = self.running_mean / correction_factor
+        corrected_var = self.running_var / correction_factor
+
+        # 5. Extract Final Standard Deviation
+        corrected_sd = np.sqrt(corrected_var)
+
+        # 6. Normalize the Returns!
+        normalized_returns = (returns - corrected_mean) / (corrected_sd + 1e-8)
         
         for log_prob, R in zip(self.log_probs, returns):
             policy_loss.append(-log_prob * R)
