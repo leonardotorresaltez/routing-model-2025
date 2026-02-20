@@ -84,7 +84,10 @@ def train():
         total_destinations_visited, total_time, pct_intersections = evaluate_solution(env.fleetStatus.all_tours(), data, truck_starts, cfg)                
 
 
-        loss, entropy = agent.update()
+        loss, entropy, grad_norm = agent.update()
+        if entropy <= 1e-5:
+            print("Terminating training due to low entropy (the agent has converged): ", entropy)
+            break
 
         report_every_50_episodes(
             episode,
