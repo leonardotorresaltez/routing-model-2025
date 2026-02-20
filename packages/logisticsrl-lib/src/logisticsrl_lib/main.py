@@ -109,7 +109,8 @@ def train():
                 "Episode": episode,
                 "Total time": total_time,
                 "Total destinations visited": total_destinations_visited,
-                "Percentage of intersections": pct_intersections
+                "Percentage of intersections": pct_intersections,
+                "Mean gradient norm": grad_norm
             })
             
         pbar.set_description(f"Rw: {episode_reward:.2f}")

@@ -120,6 +120,7 @@ class REINFORCEAgent:
         policy_loss = torch.stack(policy_loss).sum() #each policy_loss item is a scalar tensor, needs stack to sum
         loss = policy_loss - self.cfg.entropy_bonus * mean_entropy  # Add entropy bonus to loss
         loss.backward()
+        grad_norm = torch.nn.utils.clip_grad_norm_(self.policy.parameters(), max_norm=0.5) # Gradient clipping to prevent exploding gradients
         self.optimizer.step()
         
         # Clear buffers
@@ -127,7 +128,7 @@ class REINFORCEAgent:
         self.entropies.clear()
         self.rewards.clear()
 
-        return loss.item(), mean_entropy.item()
+        return loss.item(), mean_entropy.item(), grad_norm
     
     def _get_enriched_nodes(self, nodes):
         """
