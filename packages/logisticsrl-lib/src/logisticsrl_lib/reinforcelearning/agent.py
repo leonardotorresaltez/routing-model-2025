@@ -111,7 +111,7 @@ class REINFORCEAgent:
         # 6. Normalize the Returns!
         normalized_returns = (returns - corrected_mean) / (corrected_sd + 1e-8)
         
-        for log_prob, R in zip(self.log_probs, returns):
+        for log_prob, R in zip(self.log_probs, normalized_returns):
             policy_loss.append(-log_prob * R)
         
         mean_entropy = torch.stack(self.entropies).mean()
