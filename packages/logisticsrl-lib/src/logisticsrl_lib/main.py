@@ -63,6 +63,9 @@ def train():
         fleetStatus=fleetStatus   
     )
 
+
+    last_tours = ""
+    no_change_count = 0
     # Training Loop, tqdm for a nice progress bar    
     pbar = tqdm(range(cfg.episodes))
     print(f"--> STARTING RUN: {cfg.run_name}")
@@ -82,12 +85,17 @@ def train():
 
         # Check constraints 
         total_destinations_visited, total_time, pct_intersections = evaluate_solution(env.fleetStatus.all_tours(), data, truck_starts, cfg)                
+        
+        if str(env.fleetStatus.all_tours()) == last_tours:
+            no_change_count += 1
+            if no_change_count >= 10:
+                print("No improvement in tours for 10 episodes. Terminating training.")
+                break
+        else:
+            no_change_count = 0
+        last_tours = str(env.fleetStatus.all_tours())
 
-
-        loss, entropy, grad_norm = agent.update()
-        if entropy <= 1e-5:
-            print("Terminating training due to low entropy (the agent has converged): ", entropy)
-            break
+        loss, entropy, grad_norm, mean_normalized_return = agent.update()
 
         report_every_50_episodes(
             episode,
