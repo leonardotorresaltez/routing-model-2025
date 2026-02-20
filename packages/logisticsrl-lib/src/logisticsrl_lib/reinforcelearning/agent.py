@@ -110,6 +110,7 @@ class REINFORCEAgent:
 
         # 6. Normalize the Returns!
         normalized_returns = (returns - corrected_mean) / (corrected_sd + 1e-8)
+        mean_normalized_return = normalized_returns.mean().item()
         
         for log_prob, R in zip(self.log_probs, normalized_returns):
             policy_loss.append(-log_prob * R)
