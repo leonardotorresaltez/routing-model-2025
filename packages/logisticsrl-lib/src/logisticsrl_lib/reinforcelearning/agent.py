@@ -129,7 +129,7 @@ class REINFORCEAgent:
         self.entropies.clear()
         self.rewards.clear()
 
-        return loss.item(), mean_entropy.item(), grad_norm
+        return loss.item(), mean_entropy.item(), grad_norm, mean_normalized_return
     
     def _get_enriched_nodes(self, nodes):
         """
