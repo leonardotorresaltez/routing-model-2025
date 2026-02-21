@@ -1,6 +1,7 @@
 import argparse
 from dataclasses import dataclass
 
+
 @dataclass
 class Config:
     # --- Experiment ---
@@ -14,7 +15,7 @@ class Config:
     
     # --- Model ---
     embed_dim: int = 128
-    max_daily_delivery_time_each_truck: int = 24  # hours
+    max_daily_delivery_time_each_truck: int = 24*60  # hours
     
     # --- Training ---
     lr: float = 1e-3
@@ -27,10 +28,10 @@ class Config:
     
     def __post_init__(self):
         if self.data_dir == "data_version_2":
-            self.max_daily_delivery_time_each_truck = 24
+            self.max_daily_delivery_time_each_truck = 24*60
             
         else:
-            self.max_daily_delivery_time_each_truck = 12
+            self.max_daily_delivery_time_each_truck = 12*60
         
         # Construct project_name
         self.project_name = f"{self.project_name}_{self.data_dir}"

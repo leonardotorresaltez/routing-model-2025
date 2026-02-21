@@ -1,10 +1,13 @@
-import torch
-import torch.optim as optim
 import random
-import torch.nn.functional as F
+
 import numpy as np
+import torch
+import torch.nn.functional as F
+import torch.optim as optim
 from loader_lib.data_loader import FleetStatus
+
 from .policy import GraphPointerPolicy
+
 
 # ----------------------------
 # REINFORCEAgent 
@@ -31,23 +34,25 @@ class REINFORCEAgent:
         self.running_mean = 0.0
         self.running_var = 0.0
 
+
     def act(self, obs):
         nodes = torch.tensor(obs["nodes"], dtype=torch.float32).to(self.cfg.device)
 
-        # masking: Calculate valid moves
-        visited_enriched = self._apply_time_constraints(
-            self.fleetStatus.active_truck,
-            self.fleetStatus.trucklist,
-            obs["visited_targets"]
-        )
-        visited_enriched = torch.tensor(visited_enriched, dtype=torch.bool).to(self.cfg.device)
+        action_mask = torch.tensor( # load action_mask, it is part of the observation, not to be computed in the agent
+            obs["action_mask"], 
+            dtype=torch.bool
+        ).to(self.cfg.device)  # Shape: [num_nodes + 1]
+        
         current_node = obs["current_trucks"][self.fleetStatus.active_truck]
-
         enhanced_features = self._get_enriched_nodes(nodes)
         
-        action_result = self._select_action(enhanced_features, current_node, visited_enriched)
+        # Pass mask to policy for masking
+        action_result = self._select_action(
+            obs
+        )
         return int(action_result)
-        
+
+
 
     def store_reward(self, reward):
         if self.cfg.debug: print(f"DEBUG: Storing reward: {reward}")
@@ -165,14 +170,20 @@ class REINFORCEAgent:
                     mask[next_node] = True
             return mask    
         
-    def _select_action(self, nodes, current_node, visited_enriched):
+    def _select_action(self, obs):
         """
-        Helper to select the next action or return NO-OP if all nodes are visited.
+        Select action for multi-truck scenario.
+        Action = (truck_id, customer_idx) encoded as single integer.
         """
-        probs = self.policy(nodes, current_node, visited_enriched)
+        nodes = torch.tensor(obs["nodes"], dtype=torch.float32).to(self.cfg.device)
+        action_mask = torch.tensor(obs["action_mask"], dtype=torch.bool).to(self.cfg.device)
+        
+        # Pass action_mask with correct size: num_trucks * num_nodes
+        probs = self.policy(nodes, action_mask)  # Output: [T*N]
+        
         dist = torch.distributions.Categorical(probs)
         action = dist.sample()
-        self.entropies.append(dist.entropy())
         self.log_probs.append(dist.log_prob(action))
-
-        return action.item()        
+        self.entropies.append(dist.entropy())
+        
+        return int(action)    
