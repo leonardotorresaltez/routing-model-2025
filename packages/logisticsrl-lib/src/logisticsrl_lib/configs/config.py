@@ -8,7 +8,7 @@ class Config:
     run_name: str = "default"
     seed: int = 42
     device: str = "cpu"
-    wandb: bool = True  # Toggle W&B logging
+    wandb: bool = False  # Toggle W&B logging
     data_dir: str = "data_version_2"  # data path
     debug = False
     

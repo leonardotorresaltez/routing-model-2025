@@ -13,12 +13,29 @@ from loader_lib.data_loader import FleetStatus, MDVRPDataLoader, TruckState
 from common_lib.evaluation_utils import evaluate_solution
 from common_lib.visualization_utils_plotly import create_routing_graph, visualize_routing_solution
 
+
 def set_seed(seed):
     torch.manual_seed(seed)
     np.random.seed(seed)
     random.seed(seed)
 
+def create_mask_time_constraints(self, num_nodes, time_matrix, truck_list):
+    """
+    Compare each node with others to determine if the truck can reach them within the time constraints.
+    Returns a tensor of masks, one for each node.
+    """ 
+    masks = []
+    for i in range(num_nodes):
+        mask = []
+        for j in range(num_nodes):
+            if time_matrix[i][j] <= self.cfg.time_constraint:
+                mask.append(True)
+            else:
+                mask.append(False)
+        masks.append(mask)
 
+    masks = np.array(masks)  # Convert list of masks to a numpy array for efficiency
+    return torch.tensor(masks, dtype=torch.bool, device=self.cfg.device)  
 
 def train():
     cfg = parse_args()
@@ -75,7 +92,7 @@ def train():
         while not (done or terminated):
             truck, node = agent.act(obs)
             action = (truck, node)
-            if cfg.debug: print(f"DEBUG: Selected action: {action}")
+            #print(f"DEBUG: Selected action: {action}  step={env.num_steps}")
             obs, reward, done, terminated, _ = env.step(action)            
             agent.store_reward(reward)
             episode_reward += reward
@@ -157,7 +174,7 @@ def report_every_50_episodes(
 
         # Visualization
         G = create_routing_graph(data["depots"], data["customers"], env.fleetStatus.all_tours(), truck_starts)
-        #visualize_routing_solution(G, step=episode, title_suffix="Final step", save_path=f"checkpoints/visualization_episode{episode}.html")
+        visualize_routing_solution(G, step=episode, title_suffix="Final step", save_path=f"checkpoints/visualization_episode{episode}.html")
 
 
 def print_verification_info(nodesObjs, data, truck_starts):

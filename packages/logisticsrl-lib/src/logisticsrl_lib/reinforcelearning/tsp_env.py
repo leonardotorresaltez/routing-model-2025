@@ -46,8 +46,16 @@ class TSPEnv(gym.Env):
             "current_trucks": spaces.MultiDiscrete([self.num_nodes] * self.num_trucks)
             ,
             # Active truck
-            "active_truck": spaces.Discrete(self.num_trucks),
+            #"active_truck": spaces.Discrete(self.num_trucks),
+            # Mask for inactive trucks
+            "inactive_trucks_mask": spaces.MultiBinary(self.num_trucks),
+            # Distance matrix
+            "time_matrix": spaces.Box(
+                low=0, high=np.inf, shape=(self.num_nodes, self.num_nodes), dtype=np.float32
+            ),
         })
+        
+
 
         # ---------- Action space ----------
         # the total size is num_nodes x num_trucks .  +1 for NO-OP
@@ -68,7 +76,12 @@ class TSPEnv(gym.Env):
         self.visited_targets[self.source_mask] = True      
         
         # truck to act
-        self.selected_truck = 0
+        #self.selected_truck = 0
+        
+        # Initialize inactive_trucks_mask as a tensor of all False values, meaning all trucks are initially active
+        self.inactive_trucks_mask = torch.zeros(len(self.fleetStatus.trucklist), dtype=torch.bool).to(self.cfg.device)
+ 
+
 
         return self._get_obs(), {}
 
@@ -78,23 +91,27 @@ class TSPEnv(gym.Env):
             "is_target": self.target_mask.astype(np.int8),
             "visited_targets": self.visited_targets.astype(np.int8),
             "current_trucks": self.fleetStatus.truck_positions().copy(), #copy to avoid reference issues
-            "active_truck": self.selected_truck,
+            #"active_truck": self.selected_truck,
+            "inactive_trucks_mask": self.inactive_trucks_mask.cpu().numpy(),
+            "time_matrix": self.fleetStatus.time_matrix.float(),
         }
 
     def step(self, action):
         
-        self.selected_truck = action[0]
+        truck_id = action[0]
         selected_node = action[1]
         
         self.num_steps += 1
-        truck_id = self.selected_truck       
+        #truck_id = self.selected_truck       
         terminated = False        
         prev_node = self.fleetStatus.trucklist[truck_id].position
         reward = 0.0
-        if action==self.num_nodes: # NO-OP action
-            reward -=  100.0  # Heavy penalty for NO-OP to encourage visiting customers
+        if selected_node==self.num_nodes: # NO-OP action
+            reward -=  20.0  # Heavy penalty for NO-OP to encourage visiting customers
+
+            self.inactive_trucks_mask[truck_id] = True  # Mark the selected truck as inactive
         else:
-            #reward += 10.0  # Reward for visiting a new target
+            reward += 10.0  # Reward for visiting a new target
             self.fleetStatus.trucklist[truck_id].position = selected_node
             self.visited_targets[selected_node] = True        
             self.fleetStatus.trucklist[truck_id].tour.append(selected_node)
@@ -103,8 +120,8 @@ class TSPEnv(gym.Env):
             reward -= dist
             self.fleetStatus.trucklist[truck_id].total_time += dist
         
-        if self.fleetStatus.trucklist[truck_id].total_time > 24.0:
-            reward -= (float(self.fleetStatus.trucklist[truck_id].total_time) - 24.0) * 500.0
+        #if self.fleetStatus.trucklist[truck_id].total_time > 24.0:
+        #    reward -= (float(self.fleetStatus.trucklist[truck_id].total_time) - 24.0) * 500.0
             
         done = self.visited_targets[self.target_mask].all()
 
@@ -112,25 +129,18 @@ class TSPEnv(gym.Env):
         #self.fleetStatus.active_truck, terminated = self._get_next_truck_id()  
         
         
-        if (terminated): #TODO this is not posible because agent avoid it
-            print(f"All trucks exceeded 24h xxxx. Terminating episode.")
+        #if (terminated): #TODO this is not posible because agent avoid it
+        #    print(f"All trucks exceeded 24h xxxx. Terminating episode.")
 
         #unvisited_count = (self.visited_targets == False).sum().item()
         #reward -= (unvisited_count * 500.0) # Heavy penalty # Goal: maximize clients
 
        
         #avoid infinite loops: if too many steps, terminate episode with heavy penalty
-        if self.num_steps >= self.num_nodes+500:
+        if self.num_steps >= self.num_nodes+10:
             terminated = True
             reward -= 1000 # Heavy penalty for too many steps (to prevent infinite loops)
+            #print(f"Terminating episode due to too many steps: {self.num_steps}. Reward: {reward}")
         return self._get_obs(), reward, done, terminated, {}
-    
-    
-    def _get_next_truck_id(self):
-        next_truck = (self.fleetStatus.active_truck + 1) % self.num_trucks
-        for _ in range(self.num_trucks):
-            if self.fleetStatus.trucklist[next_truck].total_time <= 24:   #TODO this is not posible because agent avoid it, but we need to check it anyway
-                return next_truck, False
-            next_truck = (next_truck + 1) % self.num_trucks
-        # If all trucks exceed 24h, return -1 and terminated
-        return -1, True
+
+
