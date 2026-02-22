@@ -1,4 +1,5 @@
 import random
+import sys
 
 import gymnasium as gym
 import numpy as np
@@ -47,7 +48,7 @@ class TSPEnv(gym.Env):
             "current_trucks": spaces.MultiDiscrete([self.num_nodes] * self.num_trucks),            
             "action_mask": spaces.Box(
                 low=0, high=1, 
-                shape=(self.num_nodes + 1,),  # +1 for NO-OP
+                shape=(self.num_trucks * self.num_nodes,),  # +1 for NO-OP
                 dtype=np.uint8
             )
         })
@@ -73,8 +74,8 @@ class TSPEnv(gym.Env):
         self.visited_targets = np.zeros(self.num_nodes, dtype=np.int8)  # 0 = not visited, 1 = visited    
         self.visited_targets[self.source_mask] = True      
         
-        # truck to act
-        self.fleetStatus.active_truck = 0
+        # # truck to act
+        # self.fleetStatus.active_truck = 0
 
         return self._get_obs(), {}
 
@@ -130,6 +131,17 @@ class TSPEnv(gym.Env):
                 
                 if time_needed > remaining_time:
                     mask[action_idx] = 1
+                
+                new_time = truck.total_time + dist_to_customer + dist_customer_to_depot
+                if new_time > self.cfg.max_daily_delivery_time_each_truck:
+                    mask[action_idx] = 1
+                    # # DEBUG: show what's being masked
+                    # if truck_id == 0:  # Only print for truck 0
+                    #     print(f"  Masking customer {customer_idx}: new_time={new_time:.2f}h > {self.cfg.max_daily_delivery_time_each_truck}h")
+        
+        num_valid = (mask == 0).sum()
+        # if num_valid == 0:
+        #     print(f"WARNING: All actions masked! visited={self.visited_targets.sum()}, steps={self.num_steps}")
         
         return mask
 
@@ -166,57 +178,78 @@ class TSPEnv(gym.Env):
         
         return mask
 
+
     def step(self, action):
-        """
-        Action: (truck_id, customer_idx) pair
-        Masking guarantees: truck can reach customer AND return to depot in time.
-        """
         self.num_steps += 1
+        
+        # We no longer handle action == -1 here. main.py catches it first.
         truck_id = action // self.num_nodes     
         customer_idx = action % self.num_nodes 
         
-        # Validation: ensure action is valid
-        assert truck_id < self.num_trucks, f"truck_id {truck_id} >= {self.num_trucks}"
-        assert customer_idx < self.num_nodes, f"customer_idx {customer_idx} >= {self.num_nodes}"
-        assert self.visited_targets[customer_idx] == 0, f"Customer {customer_idx} already visited!"
-    
-        truncated = False        
+        assert truck_id < self.num_trucks
+        assert customer_idx < self.num_nodes
+        assert self.visited_targets[customer_idx] == 0
+        
         prev_node = self.fleetStatus.trucklist[truck_id].position
-        reward = 0.0
-
-        reward += 10.0  # Reward for visiting a new target
+        dist = self.fleetStatus.time_matrix[prev_node, customer_idx]
+        
         self.fleetStatus.trucklist[truck_id].position = customer_idx
+        self.fleetStatus.trucklist[truck_id].total_time += dist
         self.visited_targets[customer_idx] = True
         self.fleetStatus.trucklist[truck_id].tour.append(customer_idx)
         
-        dist = self.fleetStatus.time_matrix[prev_node, customer_idx]
-        reward -= dist
-        self.fleetStatus.trucklist[truck_id].total_time += dist
-        
         done = self.visited_targets[self.target_mask].all()
+        truncated = self.num_steps >= self.num_nodes + 500
         
-        # Return to depot at end of episode
-        
-        
-        # Check step limit (safety)
-        truncated = self.num_steps >= self.num_nodes+500 # FIXME
-        if truncated:
-             print(f"DEBUG: Too many steps ({self.num_steps}). Terminating episode with penalty.")
-             
-        # Return all trucks to depot at end of episode (done OR truncated)
-        if done or truncated:
-            for t_id in range(self.num_trucks):
-                current_pos = self.fleetStatus.trucklist[t_id].position
-                depot_idx = self.fleetStatus.truck_starts[t_id]
-                return_dist = self.fleetStatus.time_matrix[current_pos, depot_idx]
-                self.fleetStatus.trucklist[t_id].total_time += return_dist
-                # self.fleetStatus.trucklist[t_id].tour.append(depot_idx) 
-        
-        return self._get_obs(), reward, done, truncated, {}
-        
-        
-            
+        # --- DENSE REWARD SHAPING ---
+        # This forces the agent to pick shorter distances so it can fit more +10s before time runs out.
+        reward = 10 -dist
 
+        if done or truncated:
+            # --- Force all trucks to return to their depots so total time is accurate ---
+            for t_id in range(self.num_trucks):
+                truck = self.fleetStatus.trucklist[t_id]
+                depot_idx = self.fleetStatus.truck_starts[t_id]
+                
+                # We only add the return trip if they aren't already at the depot.
+                # (For example, if a truck was never used and is still sitting at the start).
+                if truck.position != depot_idx:
+                    dist_to_home = self.fleetStatus.time_matrix[truck.position, depot_idx]
+                    truck.total_time += dist_to_home
+                    truck.position = depot_idx
+                    truck.tour.append(depot_idx)
+            reward += self._calculate_episode_reward()
+            num_delivered = self.visited_targets[self.target_mask].sum()
+            total_time = sum(self.fleetStatus.trucklist[t_id].total_time for t_id in range(self.num_trucks))
+            # print(f"END: delivered={num_delivered}/{len(self.target_indices)}, time={total_time:.2f}h")
+
+        return self._get_obs(), reward, done, truncated, {}
+
+
+
+        
+
+
+
+
+
+        
+        
+        
+    def _calculate_episode_reward(self):
+        """Calculate episode-end reward bonus."""
+        num_delivered = self.visited_targets[self.target_mask].sum()
+        total_time = sum(self.fleetStatus.trucklist[t_id].total_time for t_id in range(self.num_trucks))
+        
+        delivery_rate = num_delivered / len(self.target_indices)
+        # avg_truck_time = total_time / self.num_trucks
+        
+        # Massive bonus for delivery rate (up to +1000)
+        # Heavy penalty for total fleet time
+        return 1000.0 * delivery_rate - total_time
+
+        
+        
         # # search for next truck that can act, if all exceed 24h, terminate episode
         # self.fleetStatus.active_truck, truncated = self._get_next_truck_id()  
         # if self.cfg.debug: 
@@ -244,9 +277,10 @@ class TSPEnv(gym.Env):
             coming_back_times = self.fleetStatus.time_matrix[:, self.fleetStatus.trucklist[next_truck].tour[0]]  # Time to return to depot from all nodes
             potential_times = current_time + times_to_other_nodes + coming_back_times
             visited_mask = torch.tensor(self.visited_targets).bool()
-            min_potential_time = potential_times.masked_fill(visited_mask, float('inf')).min()
-            if min_potential_time <= self.cfg.max_daily_delivery_time_each_truck:   #TODO this is not posible because agent avoid it, but we need to check it anyway
-                if self.cfg.debug: print(f"DEBUG: Truck {next_truck} can act (current_time={current_time:.2f}h, min_potential_time={min_potential_time:.2f}h).")
+            potential_time_hours = potential_times.masked_fill(visited_mask, float('inf')).min().item()  # In hours
+
+            if potential_time_hours <= self.cfg.max_daily_delivery_time_each_truck:   #TODO this is not posible because agent avoid it, but we need to check it anyway
+                # if self.cfg.debug: print(f"DEBUG: Truck {next_truck} can act (current_time={current_time:.2f}h, min_potential_time={min_potential_time:.2f}h).")
                 return next_truck, False
             next_truck = (next_truck + 1) % self.num_trucks
         # If all trucks exceed 24h, return -1 and terminated

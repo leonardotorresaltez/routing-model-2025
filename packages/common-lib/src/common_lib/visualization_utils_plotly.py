@@ -210,6 +210,6 @@ def visualize_routing_solution(G: nx.DiGraph, step, title_suffix: str = "", save
     if save_path:
         if not save_path.endswith('.html'): save_path += '.html'
         fig.write_html(save_path, include_plotlyjs='cdn', full_html=True)
-        print(f"Saved interactive animation to {save_path}")
+        # print(f"Saved interactive animation to {save_path}")
     else:
         fig.show()

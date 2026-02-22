@@ -10,18 +10,20 @@ from .policy import GraphPointerPolicy
 
 
 # ----------------------------
-# REINFORCEAgent 
+# PPOAgent 
 # ---------------------------- 
-class REINFORCEAgent:
+class PPOAgent:
 
 
         
     def __init__(self, cfg, fleetStatus: FleetStatus):
         self.cfg = cfg
         self.fleetStatus = fleetStatus
+        self.values = []
         
         
-        self.policy = GraphPointerPolicy(embed_dim=cfg.embed_dim, cfg=cfg)
+        # self.policy = GraphPointerPolicy(embed_dim=cfg.embed_dim, cfg=cfg)
+        self.policy = GraphPointerPolicy(embed_dim=cfg.embed_dim, cfg=cfg, node_dim=4)
         self.policy.to(cfg.device)
         self.optimizer = optim.Adam(self.policy.parameters(), lr=cfg.lr)
         
@@ -33,19 +35,17 @@ class REINFORCEAgent:
         self.step_count = 0
         self.running_mean = 0.0
         self.running_var = 0.0
+        
+        self.memory_nodes = []
+        self.memory_trucks = []
+        self.memory_masks = []
+        self.memory_actions = []
+        
+        
 
 
     def act(self, obs):
-        nodes = torch.tensor(obs["nodes"], dtype=torch.float32).to(self.cfg.device)
-
-        action_mask = torch.tensor( # load action_mask, it is part of the observation, not to be computed in the agent
-            obs["action_mask"], 
-            dtype=torch.bool
-        ).to(self.cfg.device)  # Shape: [num_nodes + 1]
-        
-        current_node = obs["current_trucks"][self.fleetStatus.active_truck]
-        enhanced_features = self._get_enriched_nodes(nodes)
-        
+       
         # Pass mask to policy for masking
         action_result = self._select_action(
             obs
@@ -58,83 +58,125 @@ class REINFORCEAgent:
         if self.cfg.debug: print(f"DEBUG: Storing reward: {reward}")
         self.rewards.append(reward)
 
+      
+    
     def update(self):
         """
-        Policy Gradient (REINFORCE)
+        Proximal Policy Optimization (PPO) Update
         """        
+        if len(self.rewards) == 0:
+            return 0.0, 0.0, 0.0, 0.0
 
-        n_probs = len(self.log_probs)
-        n_rewards = len(self.rewards)
-        
-        if self.cfg.debug: print(f"DEBUG: Log_Probs: {n_probs} | Rewards: {n_rewards}")
+        # Fallbacks just in case they aren't in config yet
+        ppo_epochs = getattr(self.cfg, 'ppo_epochs', 4)
+        ppo_clip = getattr(self.cfg, 'ppo_clip', 0.2)
+        gae_lambda = getattr(self.cfg, 'gae_lambda', 0.95)
 
-        assert n_probs == n_rewards, \
-            f"MISALIGNMENT DETECTED! You have {n_probs} actions but {n_rewards} rewards."
+        # 1. Prepare Values
+        values_tensor = torch.stack(self.values).squeeze().detach()
+        if values_tensor.dim() == 0: 
+            values_tensor = values_tensor.unsqueeze(0)
 
-        R = 0
-        policy_loss = []
+        # 2. Calculate GAE (Generalized Advantage Estimation)
+        advantages = []
         returns = []
+        gae = 0
         
-   
-        # Calculate Returns (Cumulative Reward from t to T)
-        # example:
-        # Step 	reward	return
-        # 3	    -0.2	-0.2
-        # 2	    -2.0	-2.2
-        # 1	    -0.5	-2.7
-        # 0	    -1.0	-3.7
-        for r in reversed(self.rewards):
-            R = r + self.cfg.gamma * R
-            returns.insert(0, R)
+        for i in reversed(range(len(self.rewards))):
+            next_val = values_tensor[i + 1] if i + 1 < len(self.rewards) else 0.0
+            # Temporal Difference Error
+            delta = self.rewards[i] + self.cfg.gamma * next_val - values_tensor[i]
+            gae = delta + self.cfg.gamma * gae_lambda * gae
             
-        returns = torch.tensor(returns).to(self.cfg.device)
+            advantages.insert(0, gae)
+            returns.insert(0, gae + values_tensor[i])
 
-        # 1. Calculate Batch Stats
-        batch_mean = returns.mean().item()
+        advantages = torch.tensor(advantages, dtype=torch.float32).to(self.cfg.device)
+        returns = torch.tensor(returns, dtype=torch.float32).to(self.cfg.device)
+        # old_log_probs = torch.stack(self.log_probs).to(self.cfg.device)
+        old_log_probs = torch.stack(self.log_probs).to(self.cfg.device).detach()  # Add .detach() here!
+
+
+        # Normalize advantages
+        if len(advantages) > 1:
+            advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
         
-        # If the episode only had 1 step, variance is undefined (NaN). Default to 0.
-        if len(returns) > 1:
-            batch_var = returns.var(unbiased=False).item()
-        else:
-            batch_var = 0.0
+        advantages = advantages.detach() # Add this line!
+        returns = returns.detach()       # Add this line too!
 
-        # 2. Increment Step for Bias Correction
-        self.step_count += 1
-        correction_factor = 1.0 - (self.cfg.beta ** self.step_count)
+        # Variables for logging
+        total_actor_loss = 0
+        total_critic_loss = 0
+        total_entropy = 0
 
-        # 3. Update Moving Averages (EMA)
-        self.running_mean = self.cfg.beta * self.running_mean + (1 - self.cfg.beta) * batch_mean
-        self.running_var = self.cfg.beta * self.running_var + (1 - self.cfg.beta) * batch_var
+        # 3. PPO EPOCHS (Reuse the episode data multiple times)
+        for _ in range(ppo_epochs):
+            new_log_probs = []
+            new_values = []
+            new_entropies = []
 
-        # 4. Apply Bias Correction
-        corrected_mean = self.running_mean / correction_factor
-        corrected_var = self.running_var / correction_factor
+            # Re-evaluate all saved states sequentially to avoid breaking GNN dimensions
+            for n, t, m, a in zip(self.memory_nodes, self.memory_trucks, self.memory_masks, self.memory_actions):
+                probs, val = self.policy(n, t, m)
+               
+                safe_probs = probs.clamp(min=1e-8)
+                dist = torch.distributions.Categorical(safe_probs)
+            
+                new_log_probs.append(dist.log_prob(a))
+                new_values.append(val)
+                new_entropies.append(dist.entropy())
 
-        # 5. Extract Final Standard Deviation
-        corrected_sd = np.sqrt(corrected_var)
+            new_log_probs = torch.stack(new_log_probs).view(-1)
+            # new_values = torch.stack(new_values).squeeze()
+            # if new_values.dim() == 0: new_values = new_values.unsqueeze(0)
+            
+            mean_entropy = torch.stack(new_entropies).mean()
 
-        # 6. Normalize the Returns!
-        normalized_returns = (returns - corrected_mean) / (corrected_sd + 1e-8)
-        mean_normalized_return = normalized_returns.mean().item()
-        
-        for log_prob, R in zip(self.log_probs, normalized_returns):
-            policy_loss.append(-log_prob * R)
-        
-        mean_entropy = torch.stack(self.entropies).mean()
+            # 4. PPO Ratio = exp(new_log_prob - old_log_prob)
+            ratio = torch.exp(new_log_probs - old_log_probs)
 
-        self.optimizer.zero_grad()
-        policy_loss = torch.stack(policy_loss).mean() #each policy_loss item is a scalar tensor, needs stack to sum
-        loss = policy_loss - self.cfg.entropy_bonus * mean_entropy  # Add entropy bonus to loss
-        loss.backward()
-        grad_norm = torch.nn.utils.clip_grad_norm_(self.policy.parameters(), max_norm=0.5) # Gradient clipping to prevent exploding gradients
-        self.optimizer.step()
-        
-        # Clear buffers
+            # 5. Clipped Surrogate Objective
+            surr1 = ratio * advantages
+            surr2 = torch.clamp(ratio, 1.0 - ppo_clip, 1.0 + ppo_clip) * advantages
+            
+            # Actor Loss (Negative because we want to maximize surrogate)
+            actor_loss = -torch.min(surr1, surr2).mean()
+            
+            new_values = torch.stack(new_values).view(-1)
+            returns = returns.view(-1)
+            # Critic Loss (MSE between new predictions and actual returns)
+            critic_loss = F.mse_loss(new_values, returns)
+
+            # Total Loss
+            loss = actor_loss + 0.5 * critic_loss - self.cfg.entropy_bonus * mean_entropy
+
+            # 6. Backpropagation
+            self.optimizer.zero_grad()
+            loss.backward()
+            torch.nn.utils.clip_grad_norm_(self.policy.parameters(), max_norm=1.0)
+            self.optimizer.step()
+
+            # Accumulate for logging
+            total_actor_loss += actor_loss.item()
+            total_critic_loss += critic_loss.item()
+            total_entropy += mean_entropy.item()
+
+        # Clear Memory Buffers
+        self.memory_nodes.clear()
+        self.memory_trucks.clear()
+        self.memory_masks.clear()
+        self.memory_actions.clear()
         self.log_probs.clear()
-        self.entropies.clear()
+        self.values.clear()
         self.rewards.clear()
 
-        return loss.item(), mean_entropy.item(), grad_norm, mean_normalized_return
+        # Averages for logging
+        avg_loss = (total_actor_loss + 0.5 * total_critic_loss) / ppo_epochs # The Actor Loss in PPO doesn't drop to zero. It constantly compares the new policy to the old policy to find small, clipped improvements (Advantages). Because the "baseline" (old policy) shifts every update, this loss tends to oscillate around zero rather than steadily decreasing.
+        avg_entropy = total_entropy / ppo_epochs # Entropy measures the agent's randomness (exploration). While it will slowly decrease as the agent becomes more confident in its routes, the entropy_bonus parameter intentionally pushes against this to prevent it from dropping too fast and getting stuck in local optima.
+        avg_critic = total_critic_loss / ppo_epochs # calculates the Mean Squared Error (MSE) between what the Value Network predicted the route would score versus the actual reward it got. As the network sees more routes, it naturally gets better at predicting the outcome, so this error smoothly drops toward zero. This proves your shared Graph Neural Network is successfully learning the environment.
+
+        return avg_loss, avg_entropy, avg_critic, returns.mean().item()
+
     
     def _get_enriched_nodes(self, nodes):
         """
@@ -200,7 +242,20 @@ class REINFORCEAgent:
         
         dist = torch.distributions.Categorical(probs)
         action = dist.sample()
-        self.log_probs.append(dist.log_prob(action))
-        self.entropies.append(dist.entropy())
+        
+        
+        # Prevent log(0) = -inf by clamping probabilities to a tiny number AFTER sampling
+        safe_probs = probs.clamp(min=1e-8)
+        safe_dist = torch.distributions.Categorical(safe_probs)
+        
+        # --- NEW PPO MEMORY SAVING ---
+        # Detach them so gradients don't leak between steps
+        self.memory_nodes.append(enhanced_nodes.detach())
+        self.memory_trucks.append(current_trucks.detach())
+        self.memory_masks.append(action_mask.detach())
+        self.memory_actions.append(action.detach())
+        
+        # PPO requires the old log_prob to be completely detached from the graph
+        self.log_probs.append(safe_dist.log_prob(action).detach())
         
         return int(action)    

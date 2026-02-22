@@ -1,5 +1,6 @@
 from copy import deepcopy
 
+
 def evaluate_solution(tours,  data, truck_starts, cfg):
     # Check total time
     total_times = []
@@ -26,6 +27,7 @@ def evaluate_solution(tours,  data, truck_starts, cfg):
 
         total_times.append(total_time_truck)
 
+    # all_destinations_visited = [subtour for tour in full_tours for subtour in tour[1:]]
     all_destinations_visited = [subtour for tour in full_tours for subtour in tour[1:-1]]
     if len(set(all_destinations_visited)) != len(all_destinations_visited):
         raise ValueError("Some destinations were visited more than once!")

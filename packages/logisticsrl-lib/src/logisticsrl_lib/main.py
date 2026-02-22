@@ -1,17 +1,20 @@
-import torch
-import random
-import numpy as np
 import os
-import wandb
-from tqdm import tqdm
+import random
 import sys
 
-from logisticsrl_lib.configs.config import parse_args
-from logisticsrl_lib.reinforcelearning.tsp_env import TSPEnv
-from logisticsrl_lib.reinforcelearning.agent import REINFORCEAgent
-from loader_lib.data_loader import FleetStatus, MDVRPDataLoader, TruckState
+import numpy as np
+import torch
 from common_lib.evaluation_utils import evaluate_solution
-from common_lib.visualization_utils_plotly import create_routing_graph, visualize_routing_solution
+from common_lib.visualization_utils_plotly import (create_routing_graph,
+                                                   visualize_routing_solution)
+from loader_lib.data_loader import FleetStatus, MDVRPDataLoader, TruckState
+from logisticsrl_lib.configs.config import parse_args
+from logisticsrl_lib.reinforcelearning.agent import PPOAgent
+from logisticsrl_lib.reinforcelearning.tsp_env import TSPEnv
+from tqdm import tqdm
+
+import wandb
+
 
 def set_seed(seed):
     torch.manual_seed(seed)
@@ -23,6 +26,9 @@ def set_seed(seed):
 def train():
     cfg = parse_args()
     set_seed(cfg.seed)
+    
+    loss = 0.0  # Initialize loss outside loop
+    best_reward = 0.0
     
     os.makedirs("checkpoints", exist_ok=True)
     
@@ -58,74 +64,124 @@ def train():
         fleetStatus=fleetStatus   
     )
 
-    agent = REINFORCEAgent(
+    agent = PPOAgent(
         cfg=cfg,
         fleetStatus=fleetStatus   
     )
 
-
-    last_tours = ""
-    no_change_count = 0
     # Training Loop, tqdm for a nice progress bar    
     pbar = tqdm(range(cfg.episodes))
     print(f"--> STARTING RUN: {cfg.run_name}")
     print("episode is=", cfg.episodes)
     for episode in pbar:
         obs, _ = env.reset()
-        done, terminated = False, False
         episode_reward = 0.0
 
-
-        while not (done or terminated):
+        while True:
             action = agent.act(obs)
-            if cfg.debug: print(f"DEBUG: Selected action: {action}")
-            obs, reward, done, terminated, _ = env.step(action)            
+            
+            if action == -1:
+                # Force trucks back to depot to get accurate final time and tour completion
+                for t_id in range(env.num_trucks):
+                    truck = env.fleetStatus.trucklist[t_id]
+                    depot_idx = env.fleetStatus.truck_starts[t_id]
+                    if truck.position != depot_idx:
+                        dist_to_home = env.fleetStatus.time_matrix[truck.position, depot_idx]
+                        truck.total_time += dist_to_home
+                        truck.position = depot_idx
+                        truck.tour.append(depot_idx)
+                        
+                final_bonus = env._calculate_episode_reward()
+                
+                if len(agent.rewards) > 0:
+                    agent.rewards[-1] += final_bonus
+                episode_reward += final_bonus
+                break
+            
+            # if action == -1:
+            #     # Agent ran out of time/trucks. We break without calling step().
+            #     # No episode-end bonus needed anymore, the dense step rewards handle it.
+            #     final_bonus = env._calculate_episode_reward()
+            #     # ADD bonus to the last action's reward instead of appending a new one
+            #     if len(agent.rewards) > 0:
+            #         agent.rewards[-1] += final_bonus
+            #     episode_reward += final_bonus
+            #     num_delivered = env.visited_targets[env.target_mask].sum()
+            #     total_time = sum(env.fleetStatus.trucklist[t_id].total_time for t_id in range(env.num_trucks))
+            #     # print(f" END: delivered={num_delivered}, time={total_time:.2f}h  ")
+            #     break
+            
+            obs, reward, done, terminated, _ = env.step(action)
             agent.store_reward(reward)
             episode_reward += reward
+            
+            if done or terminated:
+                break
+            
+        
+        frac = 1.0 - (episode / cfg.episodes)# Calculate the fraction of training remaining (goes from 1.0 down to 0.0)        
+        new_lr = max(1e-6, cfg.lr * frac) # Calculate new learning rate, keeping a tiny minimum floor (e.g., 1e-6) so it never completely stops learning
+        for param_group in agent.optimizer.param_groups:
+            param_group['lr'] = new_lr
 
         # Check constraints 
         total_destinations_visited, total_time, pct_intersections = evaluate_solution(env.fleetStatus.all_tours(), data, truck_starts, cfg)                
+
         
-        if str(env.fleetStatus.all_tours()) == last_tours:
-            no_change_count += 1
-            if no_change_count >= 10:
-                print("No improvement in tours for 10 episodes. Terminating training.")
-                break
-        else:
-            no_change_count = 0
-        last_tours = str(env.fleetStatus.all_tours())
+         
+        if episode_reward > best_reward:
+            best_reward = episode_reward
+            # Save the best model
+            torch.save(agent.policy.state_dict(), "checkpoints/best_ppo_model.pt")
+        
+        
+        
+        should_step = True
+        loss_val, entropy, val_loss, mean_return = agent.update()
 
-        loss, entropy, grad_norm, mean_normalized_return = agent.update()
-
-        report_every_50_episodes(
-            episode,
-            episode_reward,
-            loss,
-            total_time,
-            total_destinations_visited,
-            pct_intersections,
-            env,
-            data,
-            truck_starts,
-            pbar)
-             
-                        
-
-        # Logging to W&B
-        if cfg.wandb:
-            wandb.log({
-                "Total reward": episode_reward,
-                "Last Loss": loss,
-                "Mean Entropy": entropy,
-                "Episode": episode,
-                "Total time": total_time,
-                "Total destinations visited": total_destinations_visited,
-                "Percentage of intersections": pct_intersections,
-                "Mean gradient norm": grad_norm,
-                "Mean normalized return": mean_normalized_return
-            })
-            
+        if should_step and (episode % 50 == 0):
+            tqdm.write(
+                f"Episode {episode:4d} | "
+                f"Reward: {episode_reward:6.1f} | "
+                f"Time: {total_time:5.1f}h | "
+                f"Visited {total_destinations_visited:4d} | "
+                f"Critic Loss (Val): {val_loss:6.2f} | "
+                f"Entropy: {entropy:5.3f}"
+            )
+        
         pbar.set_description(f"Rw: {episode_reward:.2f}")
+        
+        if should_step:
+            loss = loss_val
+            
+            # Print to console and generate HTML
+            report_every_N_episodes(
+                episode,
+                episode_reward,
+                loss,
+                total_time,
+                total_destinations_visited,
+                pct_intersections,
+                env,
+                data,
+                truck_starts,
+                pbar,
+                cfg
+            ) 
+
+            # Logging to W&B
+            if cfg.wandb:
+                wandb.log({
+                    "Total reward": episode_reward,
+                    "Last Loss": loss,
+                    "Mean Entropy": entropy,
+                    "Episode": episode,
+                    "Total time": total_time,
+                    "Total destinations visited": total_destinations_visited,
+                    "Percentage of intersections": pct_intersections,
+                    "Mean gradient norm": val_loss,
+                    "Mean normalized return": mean_return
+                })
 
     # Save
     #path = f"checkpoints/{cfg.run_name}.pt"
@@ -135,7 +191,7 @@ def train():
     if cfg.wandb:
         wandb.finish()
 
-def report_every_50_episodes(
+def report_every_N_episodes(
     episode,
     episode_reward,
     loss,
@@ -145,9 +201,15 @@ def report_every_50_episodes(
     env,
     data,
     truck_starts,
-    pbar
+    pbar,
+    cfg
 ):
-    if episode % 50 == 0:
+    # Handle loss being a tuple (extract first element if needed)
+    if isinstance(loss, tuple):
+        loss = loss[0]
+        
+
+    if episode % (cfg.update_every * 500) == 0:
         print(
             f"Episode {episode:4d} | "
             f"Total reward: {episode_reward:.3f} | "

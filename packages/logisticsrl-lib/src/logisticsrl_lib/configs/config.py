@@ -15,23 +15,27 @@ class Config:
     
     # --- Model ---
     embed_dim: int = 128
-    max_daily_delivery_time_each_truck: int = 24*60  # hours
+    max_daily_delivery_time_each_truck: int = 24  # hours
     
     # --- Training ---
-    lr: float = 1e-3
-    episodes: int = 300 if not debug else 2
+    lr: float = 1e-4
+    episodes: int = 1500 if not debug else 2
+    update_every: int = 1
     log_interval: int = 20
-    beta: float = 0.99  # Moving average baseline factor for reward normalization. Less beta means faster adaptation to recent rewards, more beta means more stability.
-    gamma: float = 0.95  # Discount factor for rewards
+    gamma: float = 0.99  # Discount factor for rewards
 
-    entropy_bonus: float = 0.01  # Coefficient for entropy bonus to encourage exploration
+    ppo_epochs: int = 4       # How many times to reuse the episode data
+    ppo_clip: float = 0.2     # Clipping parameter to prevent destroying the policy
+    gae_lambda: float = 0.95  # Smoothing factor for Advantage calculation
+
+    entropy_bonus: float = 0.05  # Coefficient for entropy bonus to encourage exploration
     
     def __post_init__(self):
-        if self.data_dir == "data_version_2":
-            self.max_daily_delivery_time_each_truck = 24*60
+        # if self.data_dir == "data_version_2":
+        #     self.max_daily_delivery_time_each_truck = 24
             
-        else:
-            self.max_daily_delivery_time_each_truck = 12*60
+        # else:
+        #     self.max_daily_delivery_time_each_truck = 12
         
         # Construct project_name
         self.project_name = f"{self.project_name}_{self.data_dir}"
@@ -42,7 +46,11 @@ def parse_args() -> Config:
     base_cfg = Config()
     parser = argparse.ArgumentParser()
     
+    parser.add_argument("--ppo_epochs", type=int, default=base_cfg.ppo_epochs)
+    parser.add_argument("--ppo_clip", type=int, default=base_cfg.ppo_clip)
+    parser.add_argument("--gae_lambda", type=float, default=base_cfg.gae_lambda)
     parser.add_argument("--lr", type=float, default=base_cfg.lr)
+    parser.add_argument("--update_every", type=int, default=base_cfg.update_every)
     parser.add_argument("--episodes", type=int, default=base_cfg.episodes)
     parser.add_argument("--embed_dim", type=int, default=base_cfg.embed_dim)
     parser.add_argument("--seed", type=int, default=base_cfg.seed)
