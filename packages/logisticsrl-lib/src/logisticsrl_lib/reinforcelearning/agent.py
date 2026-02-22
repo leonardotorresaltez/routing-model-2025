@@ -96,7 +96,10 @@ class PPOAgent:
         # old_log_probs = torch.stack(self.log_probs).to(self.cfg.device)
         old_log_probs = torch.stack(self.log_probs).to(self.cfg.device).detach()  # Add .detach() here!
 
-
+        # Normalize Returns to stabilize the Critic
+        if len(returns) > 1:
+            returns = (returns - returns.mean()) / (returns.std() + 1e-8)
+            
         # Normalize advantages
         if len(advantages) > 1:
             advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
@@ -145,15 +148,24 @@ class PPOAgent:
             new_values = torch.stack(new_values).view(-1)
             returns = returns.view(-1)
             # Critic Loss (MSE between new predictions and actual returns)
-            critic_loss = F.mse_loss(new_values, returns)
+            value_loss_unclipped = F.mse_loss(new_values, returns, reduction="none")
+            # Clipped MSE Loss (Prevents the Critic from updating too fast)
+            value_clipped = values_tensor + torch.clamp(
+                new_values - values_tensor, 
+                -ppo_clip, 
+                ppo_clip
+            )
+            value_loss_clipped = F.mse_loss(value_clipped, returns, reduction="none")
+            # Take the maximum of both (which forces the loss to be bounded by the clip)
+            critic_loss = torch.max(value_loss_unclipped, value_loss_clipped).mean()
 
             # Total Loss
-            loss = actor_loss + 0.5 * critic_loss - self.cfg.entropy_bonus * mean_entropy
+            loss = actor_loss + 0.5 *critic_loss - self.cfg.entropy_bonus * mean_entropy
 
             # 6. Backpropagation
             self.optimizer.zero_grad()
             loss.backward()
-            torch.nn.utils.clip_grad_norm_(self.policy.parameters(), max_norm=1.0)
+            torch.nn.utils.clip_grad_norm_(self.policy.parameters(), max_norm=0.5)
             self.optimizer.step()
 
             # Accumulate for logging
@@ -171,7 +183,7 @@ class PPOAgent:
         self.rewards.clear()
 
         # Averages for logging
-        avg_loss = (total_actor_loss + 0.5 * total_critic_loss) / ppo_epochs # The Actor Loss in PPO doesn't drop to zero. It constantly compares the new policy to the old policy to find small, clipped improvements (Advantages). Because the "baseline" (old policy) shifts every update, this loss tends to oscillate around zero rather than steadily decreasing.
+        avg_loss = (total_actor_loss + 1 * total_critic_loss) / ppo_epochs # The Actor Loss in PPO doesn't drop to zero. It constantly compares the new policy to the old policy to find small, clipped improvements (Advantages). Because the "baseline" (old policy) shifts every update, this loss tends to oscillate around zero rather than steadily decreasing.
         avg_entropy = total_entropy / ppo_epochs # Entropy measures the agent's randomness (exploration). While it will slowly decrease as the agent becomes more confident in its routes, the entropy_bonus parameter intentionally pushes against this to prevent it from dropping too fast and getting stuck in local optima.
         avg_critic = total_critic_loss / ppo_epochs # calculates the Mean Squared Error (MSE) between what the Value Network predicted the route would score versus the actual reward it got. As the network sees more routes, it naturally gets better at predicting the outcome, so this error smoothly drops toward zero. This proves your shared Graph Neural Network is successfully learning the environment.
 

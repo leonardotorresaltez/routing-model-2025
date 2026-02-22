@@ -203,7 +203,7 @@ class TSPEnv(gym.Env):
         
         # --- DENSE REWARD SHAPING ---
         # This forces the agent to pick shorter distances so it can fit more +10s before time runs out.
-        reward = 10 -dist
+        reward = 30 -dist
 
         if done or truncated:
             # --- Force all trucks to return to their depots so total time is accurate ---

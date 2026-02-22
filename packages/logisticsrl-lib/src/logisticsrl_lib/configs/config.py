@@ -7,7 +7,7 @@ class Config:
     # --- Experiment ---
     project_name: str = "routing-model-2025"
     run_name: str = "default"
-    seed: int = 42
+    seed: int = 50
     device: str = "cpu"
     wandb: bool = True  # Toggle W&B logging
     data_dir: str = "data_version_1"  # data path
@@ -19,16 +19,16 @@ class Config:
     
     # --- Training ---
     lr: float = 1e-4
-    episodes: int = 1500 if not debug else 2
+    episodes: int = 8000 if not debug else 2
     update_every: int = 1
     log_interval: int = 20
     gamma: float = 0.99  # Discount factor for rewards
 
-    ppo_epochs: int = 4       # How many times to reuse the episode data
-    ppo_clip: float = 0.2     # Clipping parameter to prevent destroying the policy
+    ppo_epochs: int = 3      # How many times to reuse the episode data
+    ppo_clip: float = 0.05     # Clipping parameter to prevent destroying the policy
     gae_lambda: float = 0.95  # Smoothing factor for Advantage calculation
 
-    entropy_bonus: float = 0.05  # Coefficient for entropy bonus to encourage exploration
+    entropy_bonus: float = 0.005  # Coefficient for entropy bonus to encourage exploration
     
     def __post_init__(self):
         # if self.data_dir == "data_version_2":
@@ -47,7 +47,7 @@ def parse_args() -> Config:
     parser = argparse.ArgumentParser()
     
     parser.add_argument("--ppo_epochs", type=int, default=base_cfg.ppo_epochs)
-    parser.add_argument("--ppo_clip", type=int, default=base_cfg.ppo_clip)
+    parser.add_argument("--ppo_clip", type=float, default=base_cfg.ppo_clip)
     parser.add_argument("--gae_lambda", type=float, default=base_cfg.gae_lambda)
     parser.add_argument("--lr", type=float, default=base_cfg.lr)
     parser.add_argument("--update_every", type=int, default=base_cfg.update_every)

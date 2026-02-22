@@ -124,6 +124,9 @@ def train():
         for param_group in agent.optimizer.param_groups:
             param_group['lr'] = new_lr
 
+        # # Decay entropy from a high starting value down to 0
+        # agent.cfg.entropy_bonus = max(0.001, 0.01 * frac)
+
         # Check constraints 
         total_destinations_visited, total_time, pct_intersections = evaluate_solution(env.fleetStatus.all_tours(), data, truck_starts, cfg)                
 
@@ -207,7 +210,8 @@ def report_every_N_episodes(
     # Handle loss being a tuple (extract first element if needed)
     if isinstance(loss, tuple):
         loss = loss[0]
-        
+    
+    
 
     if episode % (cfg.update_every * 500) == 0:
         print(
