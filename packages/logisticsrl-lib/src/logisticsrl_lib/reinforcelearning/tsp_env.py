@@ -86,7 +86,7 @@ class TSPEnv(gym.Env):
                 "is_target": self.target_mask.astype(np.int8),
                 "visited_targets": self.visited_targets.astype(np.int8),
                 "current_trucks": self.fleetStatus.truck_positions().copy(),
-                "action_mask": np.ones(self.num_nodes + 1, dtype=np.uint8)  # All valid (won't be used)
+                "action_mask": self._compute_action_mask()  # All valid (won't be used)
             }
         
         return {
