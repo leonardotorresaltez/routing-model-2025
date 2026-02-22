@@ -176,10 +176,27 @@ class REINFORCEAgent:
         Action = (truck_id, customer_idx) encoded as single integer.
         """
         nodes = torch.tensor(obs["nodes"], dtype=torch.float32).to(self.cfg.device)
-        action_mask = torch.tensor(obs["action_mask"], dtype=torch.bool).to(self.cfg.device)
+        action_mask = torch.tensor(obs["action_mask"], dtype=torch.uint8, device=self.cfg.device)        
+        current_trucks = torch.tensor(obs["current_trucks"], dtype=torch.long, device=self.cfg.device)
         
-        # Pass action_mask with correct size: num_trucks * num_nodes
-        probs = self.policy(nodes, action_mask)  # Output: [T*N]
+        is_target = torch.tensor(obs["is_target"], dtype=torch.float32).to(self.cfg.device).unsqueeze(1)
+        visited = torch.tensor(obs["visited_targets"], dtype=torch.float32).to(self.cfg.device).unsqueeze(1)
+        
+        # Combine into a single tensor of shape [N, 4]: [lat, lon, is_target, visited]
+        enhanced_nodes = torch.cat([nodes, is_target, visited], dim=1)
+        
+        
+        # Check if all actions are masked
+        if action_mask.sum() == action_mask.shape[0]:
+            # print(f"WARNING: All actions masked. Terminating episode.")
+            return -1  # Return invalid action code to signal early termination
+        
+        
+        # Pass the enhanced_nodes to the policy instead of the raw coordinates
+        probs, value  = self.policy(enhanced_nodes, current_trucks, action_mask)  # Output: [T*N]      
+        # # Pass action_mask with correct size: num_trucks * num_nodes
+        # probs = self.policy(nodes, current_trucks, action_mask)  # Output: [T*N]
+        self.values.append(value)
         
         dist = torch.distributions.Categorical(probs)
         action = dist.sample()
