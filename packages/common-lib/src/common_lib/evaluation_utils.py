@@ -4,8 +4,8 @@ def evaluate_solution(tours,  data, truck_starts, cfg):
     # Check total time
     total_times = []
     full_tours = deepcopy(tours)
-    for i in range(len(full_tours)):
-        full_tours[i].append(truck_starts[i])  # Ensure each tour ends at its depot
+    # for i in range(len(full_tours)):
+    #     full_tours[i].append(truck_starts[i])  # Ensure each tour ends at its depot
         # print(f"Tour {i} after appending depot: {full_tours[i]}")
     for truck_id, tour in enumerate(full_tours):
         

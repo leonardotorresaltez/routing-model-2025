@@ -1,9 +1,10 @@
-import networkx as nx
-import plotly.graph_objects as go
 from typing import List
 
+import networkx as nx
+import plotly.graph_objects as go
 # Assuming these are your custom classes
 from loader_lib.data_loader import Customer, Depot, Truck
+
 
 def create_routing_graph(depots: List[Depot], customers: List[Customer], routes: dict, truck_starts: List[int]) -> nx.DiGraph:
     """Create a NetworkX directed graph with sequence attributes for animation."""
@@ -19,7 +20,10 @@ def create_routing_graph(depots: List[Depot], customers: List[Customer], routes:
     for truck_id, route in enumerate(routes):
         if not route: continue
         d_id = truck_starts[truck_id]
-        stops = route[1:] 
+        if len(route) > 1 and route[-1] == d_id:
+            stops = route[1:-1]
+        else:
+            stops = route[1:] 
         
         # Depot -> First Customer
         if stops:
