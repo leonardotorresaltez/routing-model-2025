@@ -88,8 +88,9 @@ def train():
         
         if str(env.fleetStatus.all_tours()) == last_tours:
             no_change_count += 1
-            if no_change_count >= 10:
-                print("No improvement in tours for 10 episodes. Terminating training.")
+            limit = 51
+            if no_change_count >= limit:
+                print(f"No improvement in tours for {limit} episodes. Terminating training.")
                 break
         else:
             no_change_count = 0
