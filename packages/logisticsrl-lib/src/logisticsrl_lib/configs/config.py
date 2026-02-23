@@ -18,17 +18,18 @@ class Config:
     max_daily_delivery_time_each_truck: int = 24  # hours
     
     # --- Training ---
-    lr: float = 1e-4
-    episodes: int = 8000 if not debug else 2
+    lr: float = 5e-5  # Reduced for stability with new reward scale
+    episodes: int = 2500 if not debug else 2 # 2500, ok for dataset_1
     update_every: int = 1
     log_interval: int = 20
     gamma: float = 0.99  # Discount factor for rewards
+    batch_episodes: int = 0  # 0 = auto-computed from num_nodes; >0 = fixed value
 
-    ppo_epochs: int = 3      # How many times to reuse the episode data
-    ppo_clip: float = 0.05     # Clipping parameter to prevent destroying the policy
-    gae_lambda: float = 0.95  # Smoothing factor for Advantage calculation
+    ppo_epochs: int = 5      # How many times to reuse the episode data (increased for stability)
+    ppo_clip: float = 0.05     # Clipping parameter (increased slightly for smooth updates)
+    gae_lambda: float = 0.97  # Smoothing factor for Advantage calculation (increased for variance reduction)
 
-    entropy_bonus: float = 0.005  # Coefficient for entropy bonus to encourage exploration
+    entropy_bonus: float = 0.0001  # Coefficient for entropy bonus to encourage exploration
     
     def __post_init__(self):
         # if self.data_dir == "data_version_2":
@@ -52,6 +53,7 @@ def parse_args() -> Config:
     parser.add_argument("--lr", type=float, default=base_cfg.lr)
     parser.add_argument("--update_every", type=int, default=base_cfg.update_every)
     parser.add_argument("--episodes", type=int, default=base_cfg.episodes)
+    parser.add_argument("--batch_episodes", type=int, default=base_cfg.batch_episodes)
     parser.add_argument("--embed_dim", type=int, default=base_cfg.embed_dim)
     parser.add_argument("--seed", type=int, default=base_cfg.seed)
     parser.add_argument("--device", type=str, default=base_cfg.device)
@@ -67,6 +69,7 @@ def parse_args() -> Config:
     return Config(
         lr=args.lr,
         episodes=args.episodes,
+        batch_episodes=args.batch_episodes,
         embed_dim=args.embed_dim,
         seed=args.seed,
         device=args.device,

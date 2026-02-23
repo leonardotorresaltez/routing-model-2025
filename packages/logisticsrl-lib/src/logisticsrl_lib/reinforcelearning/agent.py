@@ -41,7 +41,8 @@ class PPOAgent:
         self.memory_masks = []
         self.memory_actions = []
         
-        
+        self.episode_boundaries = [0]
+        self.episode_count = 0
 
 
     def act(self, obs):
@@ -58,8 +59,15 @@ class PPOAgent:
         if self.cfg.debug: print(f"DEBUG: Storing reward: {reward}")
         self.rewards.append(reward)
 
-      
-    
+    def finalize_episode(self):
+        """Mark the end of an episode and update episode tracking"""
+        self.episode_boundaries.append(len(self.rewards))
+        self.episode_count += 1
+
+    def should_update_batch(self):
+        """Check if we have enough episodes collected for a batch update"""
+        return self.episode_count >= self.cfg.batch_episodes
+
     def update(self):
         """
         Proximal Policy Optimization (PPO) Update
@@ -77,19 +85,28 @@ class PPOAgent:
         if values_tensor.dim() == 0: 
             values_tensor = values_tensor.unsqueeze(0)
 
-        # 2. Calculate GAE (Generalized Advantage Estimation)
+        # 2. Calculate GAE (Generalized Advantage Estimation) PER-EPISODE
         advantages = []
         returns = []
-        gae = 0
         
-        for i in reversed(range(len(self.rewards))):
-            next_val = values_tensor[i + 1] if i + 1 < len(self.rewards) else 0.0
-            # Temporal Difference Error
-            delta = self.rewards[i] + self.cfg.gamma * next_val - values_tensor[i]
-            gae = delta + self.cfg.gamma * gae_lambda * gae
+        for ep_idx in range(len(self.episode_boundaries) - 1):
+            start = self.episode_boundaries[ep_idx]
+            end = self.episode_boundaries[ep_idx + 1]
             
-            advantages.insert(0, gae)
-            returns.insert(0, gae + values_tensor[i])
+            gae = 0
+            ep_advantages = []
+            ep_returns = []
+            
+            for i in reversed(range(start, end)):
+                next_val = values_tensor[i + 1] if i + 1 < end else 0.0
+                delta = self.rewards[i] + self.cfg.gamma * next_val - values_tensor[i]
+                gae = delta + self.cfg.gamma * gae_lambda * gae
+                
+                ep_advantages.insert(0, gae)
+                ep_returns.insert(0, gae + values_tensor[i])
+            
+            advantages.extend(ep_advantages)
+            returns.extend(ep_returns)
 
         advantages = torch.tensor(advantages, dtype=torch.float32).to(self.cfg.device)
         returns = torch.tensor(returns, dtype=torch.float32).to(self.cfg.device)
@@ -187,6 +204,9 @@ class PPOAgent:
         avg_entropy = total_entropy / ppo_epochs # Entropy measures the agent's randomness (exploration). While it will slowly decrease as the agent becomes more confident in its routes, the entropy_bonus parameter intentionally pushes against this to prevent it from dropping too fast and getting stuck in local optima.
         avg_critic = total_critic_loss / ppo_epochs # calculates the Mean Squared Error (MSE) between what the Value Network predicted the route would score versus the actual reward it got. As the network sees more routes, it naturally gets better at predicting the outcome, so this error smoothly drops toward zero. This proves your shared Graph Neural Network is successfully learning the environment.
 
+        self.episode_boundaries = [0]
+        self.episode_count = 0
+        
         return avg_loss, avg_entropy, avg_critic, returns.mean().item()
 
     

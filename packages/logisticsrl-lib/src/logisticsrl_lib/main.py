@@ -64,6 +64,11 @@ def train():
         fleetStatus=fleetStatus   
     )
 
+    if cfg.batch_episodes == 0:
+        cfg.batch_episodes = max(8, env.num_nodes // 6)
+        if cfg.wandb:
+            print(f"Auto-computed batch_episodes = {cfg.batch_episodes} (based on {env.num_nodes} nodes)")
+
     agent = PPOAgent(
         cfg=cfg,
         fleetStatus=fleetStatus   
@@ -98,18 +103,6 @@ def train():
                 episode_reward += final_bonus
                 break
             
-            # if action == -1:
-            #     # Agent ran out of time/trucks. We break without calling step().
-            #     # No episode-end bonus needed anymore, the dense step rewards handle it.
-            #     final_bonus = env._calculate_episode_reward()
-            #     # ADD bonus to the last action's reward instead of appending a new one
-            #     if len(agent.rewards) > 0:
-            #         agent.rewards[-1] += final_bonus
-            #     episode_reward += final_bonus
-            #     num_delivered = env.visited_targets[env.target_mask].sum()
-            #     total_time = sum(env.fleetStatus.trucklist[t_id].total_time for t_id in range(env.num_trucks))
-            #     # print(f" END: delivered={num_delivered}, time={total_time:.2f}h  ")
-            #     break
             
             obs, reward, done, terminated, _ = env.step(action)
             agent.store_reward(reward)
@@ -117,6 +110,8 @@ def train():
             
             if done or terminated:
                 break
+        
+        agent.finalize_episode()
             
         
         frac = 1.0 - (episode / cfg.episodes)# Calculate the fraction of training remaining (goes from 1.0 down to 0.0)        
@@ -139,10 +134,15 @@ def train():
         
         
         
-        should_step = True
-        loss_val, entropy, val_loss, mean_return = agent.update()
+        should_step = agent.should_update_batch()
+        
+        if should_step:
+            loss_val, entropy, val_loss, mean_return = agent.update()
+        else:
+            loss_val, entropy, val_loss, mean_return = 0.0, 0.0, 0.0, 0.0
 
-        if should_step and (episode % 50 == 0):
+        # num = (10*cfg.batch_episodes)
+        if should_step:
             tqdm.write(
                 f"Episode {episode:4d} | "
                 f"Reward: {episode_reward:6.1f} | "
@@ -151,12 +151,8 @@ def train():
                 f"Critic Loss (Val): {val_loss:6.2f} | "
                 f"Entropy: {entropy:5.3f}"
             )
-        
-        pbar.set_description(f"Rw: {episode_reward:.2f}")
-        
-        if should_step:
             loss = loss_val
-            
+        
             # Print to console and generate HTML
             report_every_N_episodes(
                 episode,
@@ -185,6 +181,11 @@ def train():
                     "Mean gradient norm": val_loss,
                     "Mean normalized return": mean_return
                 })
+        
+        pbar.set_description(f"Rw: {episode_reward:.2f}")
+        
+
+        
 
     # Save
     #path = f"checkpoints/{cfg.run_name}.pt"

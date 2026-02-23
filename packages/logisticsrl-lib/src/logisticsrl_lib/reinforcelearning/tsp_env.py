@@ -202,8 +202,9 @@ class TSPEnv(gym.Env):
         truncated = self.num_steps >= self.num_nodes + 500
         
         # --- DENSE REWARD SHAPING ---
-        # This forces the agent to pick shorter distances so it can fit more +10s before time runs out.
-        reward = 30 -dist
+        # Minimal step reward: just penalize long distances to guide learning
+        # Episode-end reward handles the actual objective
+        reward = -0.1 * dist
 
         if done or truncated:
             # --- Force all trucks to return to their depots so total time is accurate ---
@@ -242,11 +243,15 @@ class TSPEnv(gym.Env):
         total_time = sum(self.fleetStatus.trucklist[t_id].total_time for t_id in range(self.num_trucks))
         
         delivery_rate = num_delivered / len(self.target_indices)
-        # avg_truck_time = total_time / self.num_trucks
         
-        # Massive bonus for delivery rate (up to +1000)
-        # Heavy penalty for total fleet time
-        return 1000.0 * delivery_rate - total_time
+        if delivery_rate < 0.85:
+            delivery_penalty = -1000.0 * (0.85 - delivery_rate)
+        else:
+            delivery_penalty = 100.0 * (delivery_rate - 0.85)
+        
+        time_penalty = -5.0 * total_time
+        
+        return delivery_penalty + time_penalty
 
         
         
