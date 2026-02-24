@@ -3,38 +3,10 @@ import os
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, List, Tuple
-
 import numpy as np
 import pandas as pd
 import torch
-from sklearn.cluster import KMeans   # <-- ADDED
-
-@dataclass
-class TruckState:
-    total_time: float = 0.0
-    tour: list = field(default_factory=list)
-    position: int = None
-
-@dataclass
-class FleetStatus:
-    active_truck: int = 0
-    trucklist: dict[int, TruckState] = field(default_factory=dict)
-    truck_starts: list[int] = field(default_factory=list)
-    source_mask: np.ndarray = None
-    time_matrix: dict = None
-    nodes: torch.Tensor = None
-    
-    def truck_positions(self):
-        return np.array([state.position for state in self.trucklist.values()], dtype=np.int64)
-    
-    def num_nodes(self):
-        return self.nodes.shape[0] if self.nodes is not None else 0    
-    
-    def all_tours(self):
-        return [state.tour for state in self.trucklist.values()]
-    
-    def num_trucks(self):
-        return len(self.truck_starts)
+from sklearn.cluster import KMeans
 
 @dataclass
 class Node:
@@ -42,15 +14,15 @@ class Node:
     idx: int
     lat: float
     lon: float
-    isSource: bool = field(init=False)
-    
+    isSource: bool = False
+    cluster_id: int = -1
     def location(self) -> Tuple[float, float]:
         return (self.lat, self.lon)
 
 @dataclass
 class Customer(Node):
-    road_access_type: str
-    delivered: bool = False  # <-- ADDED
+    road_access_type: str = ""
+    delivered: bool = False
 
 @dataclass
 class Truck:
@@ -61,6 +33,7 @@ class Truck:
     height: float
     length: float
     width: float
+    target_cluster: int = -1 
     volume: float = field(init=False)
 
     def __post_init__(self):
@@ -69,117 +42,93 @@ class Truck:
 @dataclass
 class Depot(Node):
     truck_fleet: List[int] = field(default_factory=list)
-    cluster_id: int = 0 
+    isSource: bool = True
 
 class MDVRPDataLoader:
-    def __init__(self, data_dir=None):
-        if data_dir is None:
-            self.data_dir = Path(__file__).resolve().parent.parent.parent / "data" / "data_version_1"
-        else:
-            data_dir_path = Path(data_dir)
-            if data_dir_path.is_absolute():
-                self.data_dir = data_dir_path
-            else:
-                self.data_dir = Path(__file__).resolve().parent.parent.parent / ".." / ".." / "data" / data_dir
-
+    def __init__(self, config_data_dir: str):
+        # Dynamically find data path based on Config
+        base_path = Path(__file__).resolve().parent.parent.parent / "data"
+        self.data_dir = base_path / config_data_dir
+        
+        if not self.data_dir.exists():
+            raise FileNotFoundError(f"Data directory not found: {self.data_dir}")
+            
         self.node_to_idx = {}
         self.idx_to_node = {}
 
     def load_data(self) -> Dict:
+        print(f"--- Loading data from: {self.data_dir} ---")
+        depot_df = pd.read_csv(self.data_dir / "selected_depot.csv")
+        customer_df = pd.read_csv(self.data_dir / "selected_customers.csv")
+        truck_df = pd.read_csv(self.data_dir / "selected_trucks.csv")
 
-        depot_df = pd.read_csv(os.path.join(self.data_dir, "selected_depot.csv"))
-        customer_df = pd.read_csv(os.path.join(self.data_dir, "selected_customers.csv"))
-        truck_df = pd.read_csv(os.path.join(self.data_dir, "selected_trucks.csv"))
-
-  
-        num_clusters = len(truck_df) 
+        # 1. K-Means Clustering (Dynamic based on fleet size)
+        num_clusters = len(truck_df)
         cust_coords = customer_df[['latitude', 'longitude']].values
-
-        kmeans = KMeans(n_clusters=num_clusters, random_state=42)
+        kmeans = KMeans(n_clusters=num_clusters, random_state=42, n_init=10)
         customer_df['cluster_id'] = kmeans.fit_predict(cust_coords)
+        cluster_centers = kmeans.cluster_centers_
 
+        # 2. Node Mapping
+        all_ids = list(depot_df["id_depot"]) + list(customer_df["id_customer"])
+        self.node_to_idx = {nid: i for i, nid in enumerate(all_ids)}
+        self.idx_to_node = {i: nid for nid, i in self.node_to_idx.items()}
+        num_nodes = len(all_ids)
 
-        all_node_ids = list(depot_df["id_depot"]) + list(customer_df["id_customer"])
-        self.node_to_idx = {node_id: i for i, node_id in enumerate(all_node_ids)}
-        self.idx_to_node = {i: node_id for node_id, i in self.node_to_idx.items()}
+        # 3. Object Creation
+        depots = [Depot(r["id_depot"], self.node_to_idx[r["id_depot"]], r["latitude"], r["longitude"]) for _, r in depot_df.iterrows()]
+        customers = [Customer(r["id_customer"], self.node_to_idx[r["id_customer"]], r["latitude"], r["longitude"], r["vehicle_access_type"]) for _, r in customer_df.iterrows()]
+        for c, cluster_id in zip(customers, customer_df['cluster_id']): 
+            c.cluster_id = int(cluster_id)
 
-        num_nodes = len(all_node_ids)
-
-
-        depots = []
-        for _, r in depot_df.iterrows():
-            idx = self.node_to_idx[r["id_depot"]]
-            d = Depot(r["id_depot"], idx, r["latitude"], r["longitude"])
-            d.cluster_id = 0  # depots belong to cluster 0
-            depots.append(d)
-
-        customers = []
-        for _, r in customer_df.iterrows():
-            idx = self.node_to_idx[r["id_customer"]]
-            c = Customer(
-                r["id_customer"],
-                idx,
-                r["latitude"],
-                r["longitude"],
-                r["vehicle_access_type"],
-            )
-            c.cluster_id = int(r["cluster_id"]) 
-            customers.append(c)
-
-      
         trucks = []
         for _, r in truck_df.iterrows():
-            d_idx = self.node_to_idx[r["id_depot"]]
-            t = Truck(r["id_truck"], r["id_depot"], d_idx, r["max_weight"], r["height"], r["length"], r["width"])
+            t = Truck(r["id_truck"], r["id_depot"], self.node_to_idx[r["id_depot"]], r["max_weight"], r["height"], r["length"], r["width"])
+            depot_loc = depot_df[depot_df["id_depot"] == r["id_depot"]][['latitude', 'longitude']].values
+            # Logic: Assign truck to the closest cluster of customers
+            t.target_cluster = int(np.argmin(np.linalg.norm(cluster_centers - depot_loc, axis=1)))
             trucks.append(t)
-            depots[d_idx].truck_fleet.append(t.id)
 
- 
-        nodes: List[Node] = [None] * num_nodes
-        for d in depots:
-            d.isSource = True
-            nodes[d.idx] = d
-        for c in customers:
-            c.isSource = False
-            nodes[c.idx] = c
+        nodes = [None] * num_nodes
+        for d in depots: nodes[d.idx] = d
+        for c in customers: nodes[c.idx] = c
 
-        time_matrix = np.zeros((num_nodes, num_nodes))
-        time_files = glob.glob(os.path.join(self.data_dir, "time_between_nodes_*.csv"))
-
-        for f in time_files:
-            df_chunk = pd.read_csv(f)
-            for _, r in df_chunk.iterrows():
-                id1, id2 = r["id_node1"], r["id_node2"]
-                if id1 in self.node_to_idx and id2 in self.node_to_idx:
-                    i, j = self.node_to_idx[id1], self.node_to_idx[id2]
-                    time_matrix[i, j] = time_matrix[j, i] = r["time_h"]
-
-      
-        coords = torch.tensor([[n.lat, n.lon] for n in nodes], dtype=torch.float32)
-        demands = torch.tensor([0.0 if n.isSource else 1.0 for n in nodes], dtype=torch.float32).unsqueeze(1)
-        visited = torch.zeros((num_nodes, 1), dtype=torch.float32)
-
-        cluster_ids = torch.tensor(
-            [n.cluster_id for n in nodes],
-            dtype=torch.float32
-        ).unsqueeze(1)
-
-        node_features = torch.cat([coords, demands, visited, cluster_ids], dim=1)
-        node_to_cluster = {n.idx: n.cluster_id for n in nodes}
+        coords = np.array([[n.lat, n.lon] for n in nodes])
+        coords_tensor = torch.tensor(coords, dtype=torch.float32)
+        demands = torch.tensor([0.0 if n.isSource else 1.0 for n in nodes]).unsqueeze(1)
+        visited = torch.zeros((num_nodes, 1))
+        
+        # NEW: Normalize Cluster IDs to [0, 1] range
+        c_ids = torch.tensor([n.cluster_id for n in nodes], dtype=torch.float32).unsqueeze(1)
        
+        
+        # Combined features [Lat, Lon, Demand, Visited, ClusterID]
+        node_features = torch.cat([
+            coords_tensor, 
+            demands, 
+            visited, 
+            c_ids
+        ], dim=1)
+        # 5. Time Matrix Loading
+        time_matrix = torch.zeros((num_nodes, num_nodes))
+        time_files = glob.glob(str(self.data_dir / "time_between_nodes_*.csv"))
+        for f in time_files:
+            df = pd.read_csv(f)
+            for _, r in df.iterrows():
+                if r["id_node1"] in self.node_to_idx and r["id_node2"] in self.node_to_idx:
+                    i, j = self.node_to_idx[r["id_node1"]], self.node_to_idx[r["id_node2"]]
+                    time_matrix[i, j] = time_matrix[j, i] = float(r["time_h"])
+
         return {
             "node_features": node_features,
-            "coords": coords,
-            "demands": demands,
-            "cluster_ids": cluster_ids,
-            "time_matrix": torch.tensor(time_matrix, dtype=torch.float32),
-            "depots": depots,
-            "customers": customers,
-            "nodes": nodes,
+            "cluster_ids": c_ids,
+            "time_matrix": time_matrix,
             "trucks": trucks,
             "num_nodes": num_nodes,
-            "node_to_cluster":node_to_cluster,
-            "node_to_idx": self.node_to_idx,
-            "idx_to_node": self.idx_to_node,
-            "kmeans": kmeans,
+            "depot_indices": [d.idx for d in depots],
+            "customers": customers,
+            "depots": depots,
+            "nodes" : nodes,
+            "node_to_idx":self.node_to_idx,
+            "idx_to_node":self.idx_to_node
         }

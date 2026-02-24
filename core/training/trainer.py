@@ -10,83 +10,71 @@ class Trainer:
         self.device = cfg.device
 
     def collect_rollout(self):
-        states, truck_actions, node_actions, rewards, masks, log_probs = [], [], [], [], [], []
+        data = {
+            "states": [], "node_actions": [], 
+            "rewards": [], "masks": [], "log_probs": []
+        }
         state, info = self.env.reset()
-        truck_cluster_map = {i: i for i in range(self.env.num_trucks)}
-        cluster_ids = self.env.data["node_features"][:, 4].to(self.device) 
-        is_depot = torch.zeros(self.env.num_nodes, dtype=torch.bool, device=self.device)
-        for start_node in self.env.truck_starts:
-            is_depot[start_node] = True
+        depot_indices = self.env.depot_indices.to(self.device)
 
         for step in range(self.env.max_steps):
             state_tensor = torch.FloatTensor(state).to(self.device) 
-            
             with torch.no_grad():
-                truck_logits, node_logits, _ = self.ppo.policy(state_tensor, self.edge_index)
-
-           #Mask 
-            truck_mask, node_mask = self.env.mask_actions()
-            truck_mask = truck_mask.to(self.device)
-            node_mask = node_mask.to(self.device)
-
-            # Apply truck mask
-            truck_logits[truck_mask] = -1e9
-            truck_dist = Categorical(logits=truck_logits)
-            truck_action = truck_dist.sample()
-
-            # Apply node mask and cluster constraints
-            node_logits[node_mask] = -1e9
-            allowed_cluster = truck_cluster_map.get(truck_action.item())
-            if allowed_cluster is not None:
-                wrong_cluster = (cluster_ids != allowed_cluster)
-                node_logits[wrong_cluster & ~is_depot] = -1e9
-
-            # Safety: Force depot if trapped
-            if torch.all(node_logits <= -1e8):
-                node_logits[self.env.truck_starts[truck_action.item()]] = 0 
+                _, node_logits, _ = self.ppo.policy(state_tensor.unsqueeze(0), self.edge_index)
             
-            node_dist = Categorical(logits=node_logits)
-            node_action = node_dist.sample()
+            node_logits = node_logits.squeeze(0) # [num_trucks, num_nodes]
+            _, n_mask = self.env.mask_actions()
+            n_mask = n_mask.to(self.device)
+            joint_action = torch.zeros(self.env.num_trucks, dtype=torch.long, device=self.device)
+            joint_log_probs = torch.zeros(self.env.num_trucks, device=self.device)
+            tick_visited_mask = torch.zeros(self.env.num_nodes, dtype=torch.bool, device=self.device)
 
-            # Env step
-            action = (truck_action.item(), node_action.item())
-            # Gymnasium step returns 5 values
-            next_state, reward, terminated, truncated, info = self.env.step(action)
+            for t_id in range(self.env.num_trucks):
+                t_logits = node_logits[t_id].clone()
+                t_logits[n_mask[t_id]] = -1e9
+                customer_mask = torch.ones(self.env.num_nodes, dtype=torch.bool, device=self.device)
+                customer_mask[depot_indices] = False
+                t_logits[tick_visited_mask & customer_mask] = -1e9
+                dist = Categorical(logits=t_logits)
+                action = dist.sample()
+                
+                joint_action[t_id] = action
+                joint_log_probs[t_id] = dist.log_prob(action)
+                if action not in depot_indices:
+                    tick_visited_mask[action] = True
+
+            next_state, reward, terminated, truncated, info = self.env.step(joint_action.cpu().numpy())
             
-            # Log prob calc
-            current_log_prob = truck_dist.log_prob(truck_action) + node_dist.log_prob(node_action)
-
-            # storing
-            states.append(state_tensor.cpu())
-            truck_actions.append(truck_action.cpu())
-            node_actions.append(node_action.cpu())
-            rewards.append(torch.tensor(reward, dtype=torch.float32))
-            masks.append(torch.tensor(1.0 - float(terminated)))
-            log_probs.append(current_log_prob.cpu())
-
+            data["states"].append(state_tensor.cpu())
+            data["node_actions"].append(joint_action.cpu()) 
+            data["rewards"].append(torch.tensor(reward, dtype=torch.float32))
+            data["log_probs"].append(joint_log_probs.sum().cpu()) 
+            data["masks"].append(torch.tensor(1.0 - float(terminated or truncated)))
+            
             state = next_state
-            if terminated or truncated:
-                break
+            if terminated or truncated: break
 
         return {
-            "states": torch.stack(states), 
-            "truck_actions": torch.stack(truck_actions), 
-            "node_actions": torch.stack(node_actions), 
-            "rewards": torch.stack(rewards),
-            "masks": torch.stack(masks), 
-            "log_probs_old": torch.stack(log_probs), 
+            "states": torch.stack(data["states"]), 
+            "node_actions": torch.stack(data["node_actions"]), 
+            "rewards": torch.stack(data["rewards"]),
+            "masks": torch.stack(data["masks"]), 
+            "log_probs_old": torch.stack(data["log_probs"]), 
             "edge_index": self.edge_index
         }
 
     def train(self):
+        print(f"Starting training on {self.device}...")
         for episode in range(self.cfg.episodes):
             batch = self.collect_rollout()
             stats = self.ppo.update(batch)
-
             ep_return = batch["rewards"].sum().item()
-            print(
-                f"Episode {episode} | "
-                f"Loss: {stats['loss']:.3f} | "
-                f"Reward: {ep_return:.2f} | "
-                f"Steps: {len(batch['rewards'])}"
-            )
+            visited = self.env.visited_customers.sum().item()
+            if episode % 1 == 0:
+                print(
+                    f"Ep {episode:03d} | "
+                    f"Return: {ep_return:7.2f} | "
+                    f"Visited: {int(visited):02d} | "
+                    f"Loss: {stats['loss']:.4f} | "
+                    f"Entropy: {stats.get('entropy', 0):.3f}"
+                )

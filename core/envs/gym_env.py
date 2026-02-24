@@ -1,149 +1,153 @@
 import torch
 import gymnasium as gym
-from gymnasium import spaces
 import numpy as np
-
 class MDVRPGymEnv(gym.Env):
-    def __init__(self, data, max_steps=150, max_daily_time=12.0):
+    def __init__(self, data, max_steps=400, max_daily_time=24.0):
         super().__init__()
         self.data = data
         self.max_steps = max_steps
         self.max_daily_time = max_daily_time
-
-        self.node_features = data["node_features"]
-        self.depots = data["depots"]
-        self.customers = data["customers"]
-        self.trucks = data["trucks"]
-        self.num_nodes = data["num_nodes"]
+        self.trucks = data["trucks"] 
         self.num_trucks = len(self.trucks)
-        self.time_matrix = data["time_matrix"]
+        self.num_nodes = data["num_nodes"]
         self.truck_starts = [t.depot_idx for t in self.trucks]
-
-        self.observation_space = spaces.Box(
-            low=-1e6, high=1e6,
-            shape=(self.num_nodes, self.node_features.shape[1]),
+        self.depot_indices = torch.tensor(data["depot_indices"])
+        self.cluster_ids = self.data["cluster_ids"] 
+        #Observation Space
+        self.observation_space = gym.spaces.Box(
+            low=-np.inf, 
+            high=np.inf, 
+            shape=(self.num_nodes, 5), 
             dtype=np.float32
         )
+        #Action Space
+        self.action_space = gym.spaces.MultiDiscrete(
+            [self.num_nodes] * self.num_trucks
+        )
         
-        self.action_space = spaces.MultiDiscrete([self.num_trucks, self.num_nodes])
-
     def reset(self, seed=None, options=None):
         super().reset(seed=seed)
-        
-        self.truck_positions = [start for start in self.truck_starts]
-        self.truck_times = [0.0 for _ in range(self.num_trucks)]
-        self.visited_customers = torch.zeros(self.num_nodes, dtype=torch.float32)
-        self._tours = [[start] for start in self.truck_starts]
+        self.truck_positions = self.truck_starts.copy()
+        self.truck_times = [0.0] * self.num_trucks
+        self.visited_customers = torch.zeros(self.num_nodes)
+        self._tours = [[s] for s in self.truck_starts]
         self.current_step = 0
-        return self.get_state(), self._get_info()
-
-    def step(self, action):
-        truck_id, next_node = action
-        truck_id, next_node = int(truck_id), int(next_node)
-        current_node = self.truck_positions[truck_id]
-        travel_time = float(self.time_matrix[current_node, next_node])
-        
-        potential_time = self.truck_times[truck_id] + travel_time
-        if potential_time > self.max_daily_time:
-            return self.get_state(), -100.0, False, False, self._get_info()
-
-        self.truck_times[truck_id] = potential_time
-        self.truck_positions[truck_id] = next_node
-        self._tours[truck_id].append(next_node)
-
-        is_customer = next_node not in self.truck_starts
-        first_visit = (is_customer and self.visited_customers[next_node] == 0)
-        
-        reward = -0.1 * travel_time 
-        
-        if is_customer:
-            if first_visit:
-                self.visited_customers[next_node] = 1.0
-                reward += 1000.0 
-                truck_cluster = truck_id 
-                cluster_mask = (self.node_features[:, 4] == truck_cluster)
-                is_customer_mask = torch.ones(self.num_nodes, dtype=torch.bool)
-                for depot in self.truck_starts: is_customer_mask[depot] = False
-                cluster_customers = cluster_mask & is_customer_mask
-                if torch.all(self.visited_customers[cluster_customers] == 1.0):
-                    reward += 2000.0 
-            else:
-                reward -= 10.0 
-        
-        self.current_step += 1
-        
-        all_trucks_done = all(t >= self.max_daily_time - 0.5 for t in self.truck_times)
-        terminated = self._all_customers_visited() or all_trucks_done
-        truncated = self.current_step >= self.max_steps
-        
-        if terminated or truncated:
-            reward += self._compute_terminal_penalties()
-
-        return self.get_state(), float(reward), terminated, truncated, self._get_info()
-
-    
+        return self.get_state(), {}
 
     def get_state(self):
-        state = self.node_features.clone()
-        state[:, 3] = self.visited_customers 
+        state = self.data["node_features"].clone()
+        state[:, 3] = self.visited_customers
         return state
 
-    def _get_info(self):
-       
-        return {
-            "step": self.current_step,
-            "visited_count": int(self.visited_customers.sum().item()),
-            "total_truck_time": sum(self.truck_times)
-        }
+    def step(self, actions):
+        total_reward = 0.0
+        tick_claims = {}
 
-    def _compute_reward(self, travel_time, node, first_visit, time_violation, current_node):
-        reward = -0.01 * travel_time
-        reward += 500.0 if first_visit else -20.0
-        if time_violation: reward -= 500.0
-        
-        # Cluster logic
-        curr_c = int(self.node_features[current_node, 4].item())
-        next_c = int(self.node_features[node, 4].item())
-        reward += 20.0 if curr_c == next_c else -10.0
-        
-        return reward
-
-    def _compute_terminal_penalties(self):
-        bonus_or_penalty = 0.0
-        
         for t_id in range(self.num_trucks):
-            if self.truck_positions[t_id] in self.truck_starts:
-                if len(self._tours[t_id]) > 1:
-                    bonus_or_penalty += 500.0
-            else:
-                bonus_or_penalty -= 200.0
-        for t_time in self.truck_times:
-            time_saved = max(0, self.max_daily_time - t_time)
-            bonus_or_penalty += (time_saved * 100.0)
+            next_node = int(actions[t_id])
+            curr_node = self.truck_positions[t_id]
+            home = self.truck_starts[t_id]
+            truck_obj = self.trucks[t_id]
+          
+            # 1. Skip trucks that are already back home and finished
+            if curr_node == home and len(self._tours[t_id]) > 1:
+                continue
 
-        unvisited = (self.num_nodes - len(self.depots)) - self.visited_customers.sum().item()
-        bonus_or_penalty -= unvisited * 1000.0 
+            # 2. PHYSICAL FEASIBILITY CHECK (The 24h Guard)
+            # Calculate time to reach next node + time to get back home from there
+            t_to_next = float(self.data["time_matrix"][curr_node, next_node])
+            t_from_next_to_home = float(self.data["time_matrix"][next_node, home])
+            
+            # If proposed move violates 24h limit, force them home instead
+            if self.truck_times[t_id] + t_to_next + t_from_next_to_home > self.max_daily_time:
+                if curr_node != home:
+                    next_node = home
+                    time_cost = float(self.data["time_matrix"][curr_node, home])
+                else:
+                    # Already home, just stay there
+                    continue 
+            else:
+                time_cost = t_to_next
+
+            # 3. Update Truck State
+            self.truck_times[t_id] += time_cost
+            self.truck_positions[t_id] = next_node
+            self._tours[t_id].append(next_node)
+
+            # 4. Reward Logic
+            is_depot = next_node in self.depot_indices
+            if not is_depot:
+                if self.visited_customers[next_node] == 0:
+                    self.visited_customers[next_node] = 1.0
+                    delivery_reward = 500.0
+                    dist_from_depot = float(self.data["time_matrix"][home, next_node])
+                    delivery_reward += (dist_from_depot * 5.0)
+                    
+                    if int(self.cluster_ids[next_node]) == truck_obj.target_cluster:
+                        delivery_reward += 50.0
+                    total_reward += delivery_reward
+                else:
+                    total_reward -= 100.0 # Re-visit penalty
+                
+                if next_node in tick_claims:
+                    total_reward -= 50.0 # Collision penalty
+                tick_claims[next_node] = t_id
+            
+            # Efficiency Penalty
+            total_reward -= 0.1 * time_cost
+
+        self.current_step += 1
         
-        return bonus_or_penalty
-       
-    def _all_customers_visited(self):
-        return self.visited_customers.sum().item() >= (self.num_nodes - len(self.depots))
+        # 5. Termination check
+        total_customers = self.num_nodes - len(self.depot_indices)
+        all_visited = self.visited_customers.sum() >= total_customers
+        all_home = all([self.truck_positions[i] == self.truck_starts[i] and len(self._tours[i]) > 1 
+                        for i in range(self.num_trucks)])
+        
+        terminated = bool(all_visited or all_home)
+        truncated = bool(self.current_step >= self.max_steps)
+        
+        if all_visited:
+            total_reward += 4000.0 
+
+        return self.get_state(), float(total_reward), terminated, truncated, {}
+
+    def mask_actions(self):
+        n_mask = torch.zeros((self.num_trucks, self.num_nodes), dtype=torch.bool)
+        t_mask = torch.zeros(self.num_trucks, dtype=torch.bool)
+        
+        for i in range(self.num_trucks):
+            home = self.truck_starts[i]
+            curr_pos = self.truck_positions[i]
+            curr_time = self.truck_times[i]
+            if curr_pos == home and len(self._tours[i]) > 1:
+                n_mask[i, :] = True
+                n_mask[i, home] = False
+                t_mask[i] = True
+                continue
+            n_mask[i, self.visited_customers == 1] = True
+            n_mask[i, curr_pos] = True
+
+            for n in range(self.num_nodes):
+                if n_mask[i, n] or n == home:
+                    continue
+                
+                t_to = float(self.data["time_matrix"][curr_pos, n])
+                t_back = float(self.data["time_matrix"][n, home])
+                
+                if curr_time + t_to + t_back > self.max_daily_time:
+                    n_mask[i, n] = True
+
+            reachable = (~n_mask[i]).clone()
+            reachable[self.depot_indices] = False
+            
+            if not reachable.any():
+                n_mask[i, :] = True
+                n_mask[i, home] = False 
+                t_mask[i] = True 
+                
+        return t_mask, n_mask
 
     @property
     def tours(self):
         return self._tours
-
-    def mask_actions(self):
-        truck_mask = torch.zeros(self.num_trucks, dtype=torch.bool)
-        node_mask = torch.zeros(self.num_nodes, dtype=torch.bool)
-
-        #Mask customers already visited
-        node_mask[self.visited_customers == 1] = True
-
-        #Mask trucks that are out of time
-        for t_id in range(self.num_trucks):
-            # if truck has less than 0.5h left, consider it done
-            if self.truck_times[t_id] >= self.max_daily_time - 0.5:
-                truck_mask[t_id] = True
-                
-        return truck_mask, node_mask

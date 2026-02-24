@@ -2,7 +2,7 @@ import os
 os.environ["OMP_NUM_THREADS"] = "1"
 os.environ["MKL_NUM_THREADS"] = "1"
 import torch
-
+import wandb
 from core.utils.data_loader import MDVRPDataLoader
 from core.envs.gym_env import MDVRPGymEnv
 from core.models.gnn_policy import GNNPolicy
@@ -12,39 +12,25 @@ from core.utils.greedy_run import run_greedy_episode
 from core.utils.evaluation_utils import evaluate_solution
 from core.utils.graph_utils import build_edge_index
 from core.utils.visualization_utils import create_routing_graph, visualize_routing_solution
-
-import wandb
-
-
-class Config:
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-    hidden_dim = 128
-    lr = 3e-4
-    gamma = 0.99
-    eps_clip = 0.2
-    value_coef = 0.5
-    entropy_coef = 0.01
-    episodes = 500
-    max_daily_delivery_time_each_truck =12.0
-
-    # wandb-related
-    wandb = True          # set to False to disable logging
-    project_name = "mdvrp-gnn-ppo"
-    run_name = "cluster_aware_ppo_run_1"
+from configs.config import parse_args
 
 
 def main():
-    cfg = Config()
-    #data with clustering
-    print("K-Means is processing")
-    loader = MDVRPDataLoader()
+    cfg = parse_args()
+    
+    print(f"K-Means is processing for: {cfg.data_dir}")
+    loader = MDVRPDataLoader(config_data_dir=cfg.data_dir)
     data = loader.load_data()
-    print("Data loaded succesfully")
-    num_nodes = data["num_nodes"]
-    num_trucks = len(data["trucks"])
-    input_dim = data["node_features"].shape[1]   # 5: lat, lon, demand, visited, cluster_id
+    print("Data loaded successfully")
+    env = MDVRPGymEnv(
+        data, 
+        max_steps=400, 
+        max_daily_time=cfg.max_daily_delivery_time_each_truck
+    )
 
-    # init wandb
+    num_nodes = env.action_space.nvec[0]
+    num_trucks = env.action_space.shape[0]
+    input_dim = env.observation_space.shape[1   ]
     if cfg.wandb:
         wandb.init(
             project=cfg.project_name,
@@ -52,33 +38,23 @@ def main():
             config=vars(cfg),
         )
 
-   
     edge_index = build_edge_index(num_nodes).to(cfg.device)
-    env = MDVRPGymEnv(data, max_steps=150, max_daily_time=12.0)
-    policy = GNNPolicy(
-        input_dim=input_dim,
-        hidden_dim=cfg.hidden_dim,
-        num_trucks=num_trucks,
-        num_nodes=num_nodes,
-    ).to(cfg.device)
+ 
 
     ppo_agent = PPOAgent(
-    policy_class=GNNPolicy,  
-    input_dim=input_dim,
-    hidden_dim=cfg.hidden_dim,
-    num_trucks=num_trucks,
-    num_nodes=num_nodes,
-    lr=cfg.lr,
-    gamma=cfg.gamma,
-    eps_clip=cfg.eps_clip,
-    value_coef=cfg.value_coef,
-    entropy_coef=cfg.entropy_coef,
-    device=cfg.device,
-)
+        policy_class=GNNPolicy,  
+        input_dim=input_dim,
+        hidden_dim=cfg.embed_dim, 
+        num_trucks=num_trucks,
+        num_nodes=num_nodes,
+        lr=cfg.lr,
+        device=cfg.device,
+    
+    )
 
-    print("Started trainer")
-#    trainer = Trainer(env, policy, ppo_agent, edge_index, cfg)
-    trainer = Trainer(env,ppo_agent,edge_index,cfg)
+    print(f"Started trainer with {cfg.episodes} episodes.")
+    trainer = Trainer(env, ppo_agent, edge_index, cfg)
+
     for episode in range(cfg.episodes):
         
         batch = trainer.collect_rollout()
@@ -91,11 +67,7 @@ def main():
                 f"Total reward: {ep_return:.3f} | "
                 f"Loss: {stats['loss']:.4f}"
             )
-
-            # Run greedy rollout for visualization
             greedy_env = run_greedy_episode(env, ppo_agent.policy, edge_index, cfg, cfg.device)
-
-            # Evaluate solution
             visited, total_time, per_truck_ok = evaluate_solution(
                 greedy_env,
                 data,
@@ -138,9 +110,8 @@ def main():
                 save_path=f"checkpoints/visualization_episode{episode}.png",
             )
 
-   
-    # Greedy evalution
-    greedy_env = run_greedy_episode(env, policy, edge_index, cfg, cfg.device)
+
+    greedy_env = run_greedy_episode(env, ppo_agent.policy, edge_index, cfg, cfg.device)
 
     visited, total_time, per_truck_ok = evaluate_solution(
         greedy_env,

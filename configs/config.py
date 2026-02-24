@@ -8,54 +8,45 @@ class Config:
     run_name: str = "default"
     seed: int = 42
     device: str = "cpu"
-    wandb: bool = True  # Toggle W&B logging
-    data_dir: str = "data_version_1"  # data path
+    wandb: bool = True
+    data_dir: str = "data_version_1" 
     
-    # --- Model ---
     embed_dim: int = 128
-    max_daily_delivery_time_each_truck: int = 12  # hours
-    
-    # --- Training ---
-    lr: float = 1e-3
-    episodes: int = 500 # 500
+    max_daily_delivery_time_each_truck: int = 24
+
+    lr: float = 5e-5
+    episodes: int = 500
     log_interval: int = 20
     
     def __post_init__(self):
-        if self.data_dir == "data_version_3":
+        # Now self.data_dir exists and can be checked
+        if self.data_dir == "data_version_1":
             self.max_daily_delivery_time_each_truck = 24
-            
         else:
             self.max_daily_delivery_time_each_truck = 12
         
-        # Construct project_name
         self.project_name = f"{self.project_name}_{self.data_dir}"
-        # Construct Run Name
         self.run_name = f"lr{self.lr}_sd{self.seed}"
 
 def parse_args() -> Config:
-    base_cfg = Config()
-    parser = argparse.ArgumentParser()
-    
-    parser.add_argument("--lr", type=float, default=base_cfg.lr)
-    parser.add_argument("--episodes", type=int, default=base_cfg.episodes)
-    parser.add_argument("--embed_dim", type=int, default=base_cfg.embed_dim)
-    parser.add_argument("--seed", type=int, default=base_cfg.seed)
-    parser.add_argument("--device", type=str, default=base_cfg.device)
-    parser.add_argument("--data_dir", type=str, default=base_cfg.data_dir)
-    parser.add_argument("--max_daily_delivery_time_for_each_truck", type=int, default=base_cfg.max_daily_delivery_time_each_truck)
-    
-    # Flag: --no-wandb to disable logging
-    parser.add_argument("--no-wandb", action="store_true", help="Disable W&B")
+        parser = argparse.ArgumentParser()
 
-    args = parser.parse_args()
+        parser.add_argument("--lr", type=float, default=5e-5)
+        parser.add_argument("--episodes", type=int, default=500)
+        parser.add_argument("--embed_dim", type=int, default=128)
+        parser.add_argument("--seed", type=int, default=42)
+        parser.add_argument("--device", type=str, default="cpu")
+        parser.add_argument("--data_dir", type=str, default="data_version_1")
+        parser.add_argument("--no-wandb", action="store_true", help="Disable W&B")
 
-    
-    return Config(
-        lr=args.lr,
-        episodes=args.episodes,
-        embed_dim=args.embed_dim,
-        seed=args.seed,
-        device=args.device,
-        wandb=not args.no_wandb,
-        data_dir=args.data_dir
-    )
+        args = parser.parse_args()
+
+        return Config(
+            lr=args.lr,
+            episodes=args.episodes,
+            embed_dim=args.embed_dim,
+            seed=args.seed,
+            device=args.device,
+            wandb=not args.no_wandb,
+            data_dir=args.data_dir
+        )
