@@ -7,24 +7,39 @@ class Config:
     project_name: str = "routing-model-2025"
     run_name: str = "default"
     seed: int = 42
-    device: str = "cpu"
-    wandb: bool = True  # Toggle W&B logging
-    data_dir: str = "data_version_1"  # data path
-    debug = False
+    device: str = "cpu" # Tip: switch to 'cuda' or 'mps' if available!
+    wandb: bool = True  
+    data_dir: str = "data_version_1"  
     
     # --- Model ---
-    embed_dim: int = 128
-    max_daily_delivery_time_each_truck: int = 24  # hours
+    embed_dim: int = 2**6 
+    max_daily_delivery_time_each_truck: int = 24  
     
-    # --- Training ---
-    lr: float = 1e-3
-    episodes: int = 300 if not debug else 2
+    # --- Training (Optimized for PPO) ---
+    lr: float = 3e-4                 # Increased for PPO (standard is 3e-4)
+    episodes: int = 10000            # Increased (VRPs need time to converge)
     log_interval: int = 20
-    beta: float = 0.99  # Moving average baseline factor for reward normalization. Less beta means faster adaptation to recent rewards, more beta means more stability.
-    gamma: float = 0.95  # Discount factor for rewards
-
-    entropy_bonus: float = 0.01  # Coefficient for entropy bonus to encourage exploration
+    # gamma: float = 0.99         
+    gamma: float = 1         
+    reward_scale: float = 1/150  
     
+    # --- PPO Specifics ---
+    episodes_per_update_batch: int = 10
+    ppo_epochs: int = 4              # How many times to loop over the batch
+    eps_clip: float = 0.1            # PPO clipping ratio
+    value_coef: float = 0.5          # How much the Critic loss matters
+    entropy_bonus: float = 0.01      # typical value around 0.01
+
+    
+    max_constant_routes =  episodes_per_update_batch * 2 + 2  
+
+    # --- Debug ---
+    debug: bool = False  # Set to True for quick testing with minimal episodes and smaller model
+    if debug:
+        episodes = 1
+        episodes_per_update_batch = 1
+        wandb = False
+
     def __post_init__(self):
         if self.data_dir == "data_version_2":
             self.max_daily_delivery_time_each_truck = 24

@@ -13,6 +13,7 @@ class TruckState:
     total_time: float = 0.0
     tour: list = field(default_factory=list)
     position: int = None  # current node index
+    noop: bool = False  # Flag to indicate if the last action was a NO-OP
 
 @dataclass
 class FleetStatus:

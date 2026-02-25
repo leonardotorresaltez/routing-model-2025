@@ -8,7 +8,8 @@ import sys
 
 from logisticsrl_lib.configs.config import parse_args
 from logisticsrl_lib.reinforcelearning.tsp_env import TSPEnv
-from logisticsrl_lib.reinforcelearning.agent import REINFORCEAgent
+# ---> NEW: Import PPOAgent
+from logisticsrl_lib.reinforcelearning.agent import PPOAgent
 from loader_lib.data_loader import FleetStatus, MDVRPDataLoader, TruckState
 from common_lib.evaluation_utils import evaluate_solution
 from common_lib.visualization_utils_plotly import create_routing_graph, visualize_routing_solution
@@ -17,8 +18,6 @@ def set_seed(seed):
     torch.manual_seed(seed)
     np.random.seed(seed)
     random.seed(seed)
-
-
 
 def train():
     cfg = parse_args()
@@ -31,10 +30,8 @@ def train():
     nodesObjs = data["nodes"] 
     nodes = torch.tensor([[n.lat, n.lon] for n in nodesObjs], dtype=torch.float32)    
     source_mask = np.array([getattr(node, 'isSource', False) for node in nodesObjs], dtype=bool)  
-    # List, Initial truck positions (at their depots)
     truck_starts = [truck.depot_idx for truck in data["trucks"]]
 
-    # --- Wandb Init ---
     if cfg.wandb:
         wandb.init(
             project=cfg.project_name, 
@@ -44,7 +41,6 @@ def train():
 
     print_verification_info(nodesObjs, data, truck_starts)
 
-    
     fleetStatus = FleetStatus(
         truck_starts=truck_starts,
         source_mask=source_mask,
@@ -58,32 +54,31 @@ def train():
         fleetStatus=fleetStatus   
     )
 
-    agent = REINFORCEAgent(
+    # ---> NEW: Instantiate PPOAgent
+    agent = PPOAgent(
         cfg=cfg,
         fleetStatus=fleetStatus   
     )
 
-
     last_tours = ""
     no_change_count = 0
-    # Training Loop, tqdm for a nice progress bar    
     pbar = tqdm(range(cfg.episodes))
     print(f"--> STARTING RUN: {cfg.run_name}")
     print("episode is=", cfg.episodes)
+    
     for episode in pbar:
         obs, _ = env.reset()
         done, terminated = False, False
         episode_reward = 0.0
 
-
         while not (done or terminated):
             action = agent.act(obs)
-            if cfg.debug: print(f"DEBUG: Selected action: {action}")
-            obs, reward, done, terminated, _ = env.step(action)            
-            agent.store_reward(reward)
+            if getattr(cfg, 'debug', False): print(f"DEBUG: Selected action: {action}")
+            obs, reward, done, terminated, _ = env.step(action)  
+            is_terminal = done or terminated          
+            agent.store_reward(reward, is_terminal)
             episode_reward += reward
 
-        # Check constraints 
         total_destinations_visited, total_time, pct_intersections = evaluate_solution(env.fleetStatus.all_tours(), data, truck_starts, cfg)                
         
         if str(env.fleetStatus.all_tours()) == last_tours:
@@ -96,12 +91,14 @@ def train():
             no_change_count = 0
         last_tours = str(env.fleetStatus.all_tours())
 
-        loss, entropy, grad_norm, mean_normalized_return = agent.update()
+        # Update happens every X episodes, handling the full batched PPO loop internally!
+        if episode % cfg.episodes_per_update_batch == 0 and episode > 0:
+            loss, entropy, grad_norm = agent.update()
 
         report_every_50_episodes(
             episode,
             episode_reward,
-            loss,
+            loss if 'loss' in locals() else 0.0,
             total_time,
             total_destinations_visited,
             pct_intersections,
@@ -109,44 +106,28 @@ def train():
             data,
             truck_starts,
             pbar)
-             
-                        
 
-        # Logging to W&B
         if cfg.wandb:
             wandb.log({
                 "Total reward": episode_reward,
-                "Last Loss": loss,
-                "Mean Entropy": entropy,
+                "Last Loss": loss if 'loss' in locals() else 0.0,
+                "Mean Entropy": entropy if 'entropy' in locals() else 0.0,
                 "Episode": episode,
                 "Total time": total_time,
                 "Total destinations visited": total_destinations_visited,
                 "Percentage of intersections": pct_intersections,
-                "Mean gradient norm": grad_norm,
-                "Mean normalized return": mean_normalized_return
+                "Mean gradient norm": grad_norm if 'grad_norm' in locals() else 0.0,
+                "NO-OP count": env.noop_count
             })
             
         pbar.set_description(f"Rw: {episode_reward:.2f}")
-
-    # Save
-    #path = f"checkpoints/{cfg.run_name}.pt"
-    #torch.save(agent.policy.state_dict(), path)
-    #print(f"--> SAVED: {path}")
     
     if cfg.wandb:
         wandb.finish()
 
 def report_every_50_episodes(
-    episode,
-    episode_reward,
-    loss,
-    total_time,
-    total_destinations_visited,
-    pct_intersections,
-    env,
-    data,
-    truck_starts,
-    pbar
+    episode, episode_reward, loss, total_time, total_destinations_visited,
+    pct_intersections, env, data, truck_starts, pbar
 ):
     if episode % 50 == 0:
         print(
@@ -159,7 +140,6 @@ def report_every_50_episodes(
         print("Percentage of intersections: ", pct_intersections)
         pbar.write("\n--- Sample Route Plan ---")
 
-        # total time and tour for each truck
         for i, truck_state in env.fleetStatus.trucklist.items():
             print(f"Truck {i}: total time = {truck_state.total_time:.2f}, tour = {truck_state.tour}")
         pbar.write("-------------------------\n")
@@ -170,10 +150,8 @@ def report_every_50_episodes(
             else:
                 customer.delivered = False 
 
-        # Visualization
         G = create_routing_graph(data["depots"], data["customers"], env.fleetStatus.all_tours(), truck_starts)
         visualize_routing_solution(G, step=episode, title_suffix="Final step", save_path=f"checkpoints/visualization_episode{episode}.html")
-
 
 def print_verification_info(nodesObjs, data, truck_starts):
     print("\n" + "="*40)
@@ -185,7 +163,6 @@ def print_verification_info(nodesObjs, data, truck_starts):
     print(f"• Number of trucks:        {len(data['trucks'])}")
     print(f"• Truck start positions:   {truck_starts}")
     print("="*40 + "\n")
-
 
 if __name__ == "__main__":
     train()
