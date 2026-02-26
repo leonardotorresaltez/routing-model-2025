@@ -65,37 +65,8 @@ class FactorizedFleetPolicy(nn.Module):
         node_scores = node_scores.masked_fill(visited_mask, -1e9)    
                
 
-        # Ensure visited_mask is applied to each row of node_probs
-        #expanded_visited_mask = visited_mask.unsqueeze(0).expand(node_scores.size(0), -1)
-        #expanded_visited_mask = visited_mask.unsqueeze(0)
-        #node_scores = node_scores.masked_fill(expanded_visited_mask, -1e9)
-
-        # Check if all actions are masked ..TODO REVISAR ESTO PORQUE ES DE DOS DIMENSIONES AHORA
-        #TODO TODO TODO 
-        #truck_dist = torch.distributions.Categorical(truck_probs)
-        #truck = truck_dist.sample()
         
-        #if visited_mask[truck.item()].all():
-        #    print("DEBUG: All nodes are masked as visited. Adding NO-OP action.")
-
-        #    num_nodes = visited_mask.shape[0] # is this IF case is same as nodes.shape[0]
-            # Create a NO-OP action probability
-        #    noop_probs = torch.zeros(num_nodes + 1, device=visited_mask.device)
-            # Assign probability 1 to the NO-OP action at index num_nodes
-        #    noop_probs[num_nodes] = 1.0
-        #    node_scores =  noop_probs
-        
-        node_probs = F.softmax(node_scores, dim=-1)  # Corrected dimension for softmax to apply along the last axis
-
-        #if visited_mask.all():
-        #truck_dist = torch.distributions.Categorical(truck_probs)
-        #truck = truck_dist.sample()
-        #print("truc maybe selected:", truck.item())
-        #node_dist = torch.distributions.Categorical(node_probs[truck])
-        #node = node_dist.sample()
-        
-        #if visited_mask[node]:
-        #    print(f"DEBUG: Node {node} is already visited.")        
+        node_probs = F.softmax(node_scores, dim=-1)  # Corrected dimension for softmax to apply along the last axis     
         
         if self.cfg.debug: print(f"DEBUG: Action probabilities shape: {node_probs.cpu().detach().numpy().shape} | Sum: {node_probs.sum().item():.4f}")
         return truck_probs, node_probs

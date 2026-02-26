@@ -38,33 +38,16 @@ class REINFORCEAgent:
             obs["visited_targets"]
         )
         
-        
-        #visited_targets = obs["visited_targets"]
-        #visited_targets = torch.tensor(visited_targets, dtype=torch.bool).to(self.cfg.device)
-        
-        
-        #current_node = obs["current_trucks"][self.fleetStatus.active_truck]
 
-        #enhanced_features = self._get_enriched_nodes(nodes)
         enhanced_features = self._get_enriched_observation_space(obs)
         
-        # Get truck_positions directly from obs['current_trucks']
         truck_positions = obs["current_trucks"]
         inactive_trucks_mask = torch.tensor(obs["inactive_trucks_mask"], dtype=torch.bool).to(self.cfg.device)
         
-        #True if truck total_time >= 17.0 else False for each truck
-        #active_trucks_mask = torch.tensor([state.total_time >= 17.0 for state in self.fleetStatus.trucklist.values()], dtype=torch.bool).to(self.cfg.device)
         
         truck, node = self._select_action(enhanced_features, truck_positions, visited_enriched_tensor,inactive_trucks_mask)
         
 
-            
-        
-        # Check if the selected node is already visited
-        #if visited_targets[node]:
-        #    if self.cfg.debug: print(f"DEBUG: Node {node} is already visited.")
-        #if ( int(truck)==1 and self.fleetStatus.trucklist[1].total_time >= 24.0) :
-        #    print(f"DEBUG: Truck {truck} has already 24 or more hours, should not select it. total_time={self.fleetStatus.trucklist[1].total_time}")
 
         return int(truck), int(node)
         
@@ -154,31 +137,7 @@ class REINFORCEAgent:
 
         return enriched_tensor
     
-    def _apply_time_constraints(self, truck_list, visited_mask):
-        """
-        Modify the visited_mask to also mask nodes that would cause any truck to exceed 24h total time if visited.
-        Returns a tensor of masks, one for each truck.
-        """
-        time_matrix = self.fleetStatus.time_matrix
-        num_nodes = time_matrix.shape[0]
-        masks = []
-
-        for truck_id, truck_state in truck_list.items():
-            mask = visited_mask.copy()  # Start with the original visited mask (targets already visited)
-            current_node = truck_state.tour[-1] if truck_state.tour else 0
-
-            for next_node in range(num_nodes):
-                if mask[next_node]:
-                    continue  # already masked as visited
-                next_travel_time = time_matrix[current_node, next_node]
-                time_to_return = time_matrix[next_node, truck_state.tour[0]]  # time to return to depot from next node
-                if truck_state.total_time + next_travel_time + time_to_return > self.cfg.max_daily_delivery_time_each_truck:
-                    mask[next_node] = True
-
-            masks.append(mask)
-
-        masks = np.array(masks)  # Convert list of masks to a numpy array for efficiency
-        return torch.tensor(masks, dtype=torch.bool, device=self.cfg.device)  
+ 
     
     
     def _apply_time_constraints_v3(self, truck_list, visited_mask):
@@ -214,50 +173,15 @@ class REINFORCEAgent:
 
         return masks        
         
-    def _apply_time_constraints_v2_1(self, truck_list, visited_mask):
-        """
-        Optimized version of _apply_time_constraints with corrected return time calculation.
-        """
-        time_matrix = torch.as_tensor(self.fleetStatus.time_matrix, device=self.cfg.device)  # Avoid unnecessary tensor creation
-        num_nodes = time_matrix.shape[0]
-        visited_mask = torch.tensor(visited_mask, dtype=torch.bool, device=self.cfg.device)  # Ensure visited_mask is a tensor
-        masks = visited_mask.clone()  # Start with the visited mask
-
-        # Ensure masks has the correct shape for multiple trucks
-        if masks.dim() == 1:
-            masks = masks.unsqueeze(0).repeat(len(truck_list), 1)
-
-        # Iterate over trucks
-        for truck_id, truck_state in enumerate(truck_list.values()):
-            current_node = truck_state.tour[-1] if truck_state.tour else 0
-            current_time = truck_state.total_time
-
-            # Calculate total time for each node
-            for next_node in range(num_nodes):
-                if masks[truck_id, next_node]:
-                    continue  # Skip already visited nodes
-
-                travel_time = time_matrix[current_node, next_node]
-                return_time = time_matrix[next_node, truck_state.tour[0]] if truck_state.tour else 0
-                total_time = current_time + travel_time + return_time
-
-                if total_time > self.cfg.max_daily_delivery_time_each_truck:
-                    masks[truck_id, next_node] = True
-
-        return masks         
+     
                 
         
     def _select_action(self, nodes, truck_positions, visited_enriched, inactive_trucks_mask):
         """
         Helper to select the next action or return NO-OP if all nodes are visited.
         """
-        # Create a mask for trucks that already have 17 or more hours in their total time
-        #truck_time_mask = torch.tensor([
-        #    truck_state.total_time >= 17.0 for truck_state in self.fleetStatus.trucklist.values()
-        #], dtype=torch.bool).to(self.cfg.device)
 
         # Pass the mask to the policy
-        #truck_probs, node_probs = self.policy(nodes, truck_positions, visited_enriched, truck_time_mask)
         truck_probs, node_probs = self.policy(nodes, truck_positions, visited_enriched, inactive_trucks_mask)
         
         # ---- sample truck ----

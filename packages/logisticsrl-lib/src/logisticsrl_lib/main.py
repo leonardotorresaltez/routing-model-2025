@@ -98,9 +98,7 @@ def train():
         while not (done or terminated):
             truck, node = agent.act(obs)
             action = (truck, node)
-            #print(f"DEBUG: Selected action: {action}  step={env.num_steps}")
             obs, reward, done, terminated, _ = env.step(action) 
-            #print(f"DEBUG: Selected action: {action}  step={env.num_steps} reward={reward:.2f} ")           
             agent.store_reward(reward)
             episode_reward += reward
 

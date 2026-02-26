@@ -88,7 +88,6 @@ class TSPEnv(gym.Env):
             "is_target": self.target_mask.astype(np.int8),
             "visited_targets": self.visited_targets.astype(np.int8),
             "current_trucks": self.fleetStatus.truck_positions().copy(), #copy to avoid reference issues
-            #"active_truck": self.selected_truck,
             "inactive_trucks_mask": self.inactive_trucks_mask.cpu().numpy(),
             "time_matrix": self.fleetStatus.time_matrix.float(),
         }
@@ -116,32 +115,11 @@ class TSPEnv(gym.Env):
             dist = self.fleetStatus.time_matrix[prev_node, selected_node]
             reward += self.normalized_rewards.getRewardDistance(prev_node, selected_node)
             self.fleetStatus.trucklist[truck_id].total_time += dist
-        
-        #if self.fleetStatus.trucklist[truck_id].total_time > 24.0:
-        #    reward -= (float(self.fleetStatus.trucklist[truck_id].total_time) - 24.0) * 500.0
-            
+                   
         done = self.visited_targets[self.target_mask].all()
 
-        # search for next truck that can act, if all exceed 24h, terminate episode
-        #self.fleetStatus.active_truck, terminated = self._get_next_truck_id()  
-        
-        
-        #if (terminated): #TODO this is not posible because agent avoid it
-        #    print(f"All trucks exceeded 24h xxxx. Terminating episode.")
-
-        #unvisited_count = (self.visited_targets == False).sum().item()
-        #reward -= (unvisited_count * 500.0) # Heavy penalty # Goal: maximize clients
-
-       
-        #avoid infinite loops: if too many steps, terminate episode with heavy penalty
         if self.num_steps >= self.num_nodes+10:
             terminated = True
-            #reward -= 1000 # Heavy penalty for too many steps (to prevent infinite loops)
-            #print(f"Terminating episode due to too many steps: {self.num_steps}. Reward: {reward}")
-            
-        #if done or terminated:
-                #unvisited_count = (self.visited_targets == False).sum().item()
-                #reward += self.normalized_rewards.getRewardTotalFleetTime(self.fleetStatus.total_fleet_time())
                             
         return self._get_obs(), reward, done, terminated, {}
 
