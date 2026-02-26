@@ -18,13 +18,16 @@ class REINFORCEAgent:
         self.fleetStatus = fleetStatus
         
         
-        self.policy = FactorizedFleetPolicy(embed_dim=cfg.embed_dim, cfg=cfg)
+        self.policy = FactorizedFleetPolicy(node_dim= (fleetStatus.num_nodes() + 2), embed_dim=cfg.embed_dim, cfg=cfg)
         self.policy.to(cfg.device)
         self.optimizer = optim.Adam(self.policy.parameters(), lr=cfg.lr)
         
         # Buffers for REINFORCE
         self.log_probs = []
         self.rewards = []
+        
+        self.entropies = []
+        self.entropy_coef = 0.01
 
     def act(self, obs):
         nodes = torch.tensor(obs["nodes"], dtype=torch.float32).to(self.cfg.device)
@@ -60,8 +63,8 @@ class REINFORCEAgent:
         # Check if the selected node is already visited
         #if visited_targets[node]:
         #    if self.cfg.debug: print(f"DEBUG: Node {node} is already visited.")
-        if ( int(truck)==1 and self.fleetStatus.trucklist[1].total_time >= 24.0) :
-            print(f"DEBUG: Truck {truck} has already 24 or more hours, should not select it. total_time={self.fleetStatus.trucklist[1].total_time}")
+        #if ( int(truck)==1 and self.fleetStatus.trucklist[1].total_time >= 24.0) :
+        #    print(f"DEBUG: Truck {truck} has already 24 or more hours, should not select it. total_time={self.fleetStatus.trucklist[1].total_time}")
 
         return int(truck), int(node)
         
@@ -84,8 +87,10 @@ class REINFORCEAgent:
             f"MISALIGNMENT DETECTED! You have {n_probs} actions but {n_rewards} rewards."
 
         R = 0
+        gamma = 0.95
         policy_loss = []
         returns = []
+        entropy_loss = []
         
    
         # Calculate Returns (Cumulative Reward from t to T)
@@ -96,7 +101,7 @@ class REINFORCEAgent:
         # 1	    -0.5	-2.7
         # 0	    -1.0	-3.7
         for r in reversed(self.rewards):
-            R = r + R # No discount factor for simple TSP usually, or use 0.99
+            R = r + gamma * R # No discount factor for simple TSP usually, or use 0.99
             returns.insert(0, R)
             
         returns = torch.tensor(returns).to(self.cfg.device)
@@ -104,17 +109,19 @@ class REINFORCEAgent:
         returns = returns.float()
         returns = (returns - returns.mean()) / (returns.std() + 1e-9)
         
-        for log_prob, R in zip(self.log_probs, returns):
+        for log_prob, R, entropy in zip(self.log_probs, returns, self.entropies):
             policy_loss.append(-log_prob * R)
+            entropy_loss.append(entropy)
             
         self.optimizer.zero_grad()
-        loss = torch.stack(policy_loss).sum() #each policy_loss item is a scalar tensor, needs stack to sum
+        loss = torch.stack(policy_loss).sum() - self.entropy_coef * torch.stack(entropy_loss).sum() #each policy_loss item is a scalar tensor, needs stack to sum
         loss.backward()
         self.optimizer.step()
         
         # Clear buffers
         self.log_probs.clear()
         self.rewards.clear()
+        self.entropies.clear()
         losint = loss.item()
 
         return losint
@@ -275,5 +282,6 @@ class REINFORCEAgent:
         # ---- log prob joint ----
         log_prob = truck_dist.log_prob(truck) + node_dist.log_prob(node)
         self.log_probs.append(log_prob)
-
+        entropy = truck_dist.entropy() + node_dist.entropy()
+        self.entropies.append(entropy)
         return truck.item(), node.item()

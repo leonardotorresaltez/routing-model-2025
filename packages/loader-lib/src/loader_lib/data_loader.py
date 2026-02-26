@@ -32,6 +32,9 @@ class FleetStatus:
         return [state.tour for state in self.trucklist.values()]
     def num_trucks(self):
         return len(self.truck_starts)
+    
+    def total_fleet_time(self):
+        return sum(state.total_time for state in self.trucklist.values())
 
 @dataclass
 class Node:

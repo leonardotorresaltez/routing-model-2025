@@ -12,7 +12,7 @@ from logisticsrl_lib.reinforcelearning.agent import REINFORCEAgent
 from loader_lib.data_loader import FleetStatus, MDVRPDataLoader, TruckState
 from common_lib.evaluation_utils import evaluate_solution
 from common_lib.visualization_utils_plotly import create_routing_graph, visualize_routing_solution
-
+from logisticsrl_lib.reinforcelearning.rewards import NormalizedRewards
 
 def set_seed(seed):
     torch.manual_seed(seed)
@@ -59,8 +59,8 @@ def train():
             config=vars(cfg)
         )
 
-    print_verification_info(nodesObjs, data, truck_starts)
-
+    print_verification_info(nodesObjs, data, truck_starts)   
+    
     
     fleetStatus = FleetStatus(
         truck_starts=truck_starts,
@@ -69,15 +69,21 @@ def train():
         nodes=nodes
     )
         
+    rewards = NormalizedRewards(cfg,time_matrix=data["time_matrix"])    
+    
     env = TSPEnv(
         cfg=cfg,
-        fleetStatus=fleetStatus   
+        fleetStatus=fleetStatus,
+        normalized_rewards=rewards
     )
 
+
+    
     agent = REINFORCEAgent(
         cfg=cfg,
         fleetStatus=fleetStatus   
     )
+    sys.exit(0)
 
     # Training Loop, tqdm for a nice progress bar    
     pbar = tqdm(range(cfg.episodes))
@@ -93,13 +99,13 @@ def train():
             truck, node = agent.act(obs)
             action = (truck, node)
             #print(f"DEBUG: Selected action: {action}  step={env.num_steps}")
-            obs, reward, done, terminated, _ = env.step(action)            
+            obs, reward, done, terminated, _ = env.step(action) 
+            #print(f"DEBUG: Selected action: {action}  step={env.num_steps} reward={reward:.2f} ")           
             agent.store_reward(reward)
             episode_reward += reward
 
         # Check constraints 
         total_destinations_visited, total_time, pct_intersections = evaluate_solution(env.fleetStatus.all_tours(), data, truck_starts, cfg)                
-
 
         loss = agent.update()
 
@@ -160,7 +166,6 @@ def report_every_50_episodes(
         print("Total destinations visited: ", total_destinations_visited)
         print("Percentage of intersections: ", pct_intersections)
         pbar.write("\n--- Sample Route Plan ---")
-
         # total time and tour for each truck
         for i, truck_state in env.fleetStatus.trucklist.items():
             print(f"Truck {i}: total time = {truck_state.total_time:.2f}, tour = {truck_state.tour}")

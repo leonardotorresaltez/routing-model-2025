@@ -5,7 +5,7 @@ import numpy as np
 from gymnasium import spaces
 
 from loader_lib.data_loader import FleetStatus, TruckState
-
+from logisticsrl_lib.reinforcelearning.rewards import NormalizedRewards
 
 class TSPEnv(gym.Env):
     metadata = {"render_modes": []}
@@ -14,10 +14,12 @@ class TSPEnv(gym.Env):
         self,
         cfg,
         fleetStatus: FleetStatus,
+        normalized_rewards: NormalizedRewards
        
     ):
         super().__init__()
         self.fleetStatus = fleetStatus
+        self.normalized_rewards = normalized_rewards
         self.cfg = cfg
         self.num_nodes = self.fleetStatus.num_nodes()
 
@@ -45,8 +47,6 @@ class TSPEnv(gym.Env):
             # Current position of each truck
             "current_trucks": spaces.MultiDiscrete([self.num_nodes] * self.num_trucks)
             ,
-            # Active truck
-            #"active_truck": spaces.Discrete(self.num_trucks),
             # Mask for inactive trucks
             "inactive_trucks_mask": spaces.MultiBinary(self.num_trucks),
             # Distance matrix
@@ -75,9 +75,6 @@ class TSPEnv(gym.Env):
         self.visited_targets = np.zeros(self.num_nodes, dtype=np.int8)  # 0 = not visited, 1 = visited    
         self.visited_targets[self.source_mask] = True      
         
-        # truck to act
-        #self.selected_truck = 0
-        
         # Initialize inactive_trucks_mask as a tensor of all False values, meaning all trucks are initially active
         self.inactive_trucks_mask = torch.zeros(len(self.fleetStatus.trucklist), dtype=torch.bool).to(self.cfg.device)
  
@@ -102,22 +99,22 @@ class TSPEnv(gym.Env):
         selected_node = action[1]
         
         self.num_steps += 1
-        #truck_id = self.selected_truck       
         terminated = False        
         prev_node = self.fleetStatus.trucklist[truck_id].position
         reward = 0.0
         if selected_node==self.num_nodes: # NO-OP action
-            reward -=  20.0  # Heavy penalty for NO-OP to encourage visiting customers
-
+            
+            reward += self.normalized_rewards.getRewardNonOP()
             self.inactive_trucks_mask[truck_id] = True  # Mark the selected truck as inactive
         else:
-            reward += 10.0  # Reward for visiting a new target
+            reward += self.normalized_rewards.getRewardVisitBonus()
+            
             self.fleetStatus.trucklist[truck_id].position = selected_node
             self.visited_targets[selected_node] = True        
             self.fleetStatus.trucklist[truck_id].tour.append(selected_node)
             
             dist = self.fleetStatus.time_matrix[prev_node, selected_node]
-            reward -= dist
+            reward += self.normalized_rewards.getRewardDistance(prev_node, selected_node)
             self.fleetStatus.trucklist[truck_id].total_time += dist
         
         #if self.fleetStatus.trucklist[truck_id].total_time > 24.0:
@@ -139,8 +136,13 @@ class TSPEnv(gym.Env):
         #avoid infinite loops: if too many steps, terminate episode with heavy penalty
         if self.num_steps >= self.num_nodes+10:
             terminated = True
-            reward -= 1000 # Heavy penalty for too many steps (to prevent infinite loops)
+            #reward -= 1000 # Heavy penalty for too many steps (to prevent infinite loops)
             #print(f"Terminating episode due to too many steps: {self.num_steps}. Reward: {reward}")
+            
+        #if done or terminated:
+                #unvisited_count = (self.visited_targets == False).sum().item()
+                #reward += self.normalized_rewards.getRewardTotalFleetTime(self.fleetStatus.total_fleet_time())
+                            
         return self._get_obs(), reward, done, terminated, {}
 
 
