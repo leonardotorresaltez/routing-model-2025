@@ -101,7 +101,7 @@ class TSPEnv(gym.Env):
             self.fleetStatus.trucklist[truck_id].tour.append(action)
             
             dist = self.fleetStatus.time_matrix[prev_node, action]
-            reward -= dist /10
+            reward -= dist / 10 # COnsider putting /5
             self.fleetStatus.trucklist[truck_id].total_time += dist
         
             

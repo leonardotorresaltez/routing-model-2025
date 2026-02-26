@@ -18,6 +18,8 @@ class PPOAgent:
         
         self.policy = GraphPointerPolicy(embed_dim=cfg.embed_dim, node_dim=4, cfg=cfg).to(cfg.device)
         self.optimizer = optim.Adam(self.policy.parameters(), lr=cfg.lr)
+
+        self.returns_var = None  # For storing returns' variance to later normalize them with EMA
         
         # PPO Hyperparameters (Fallbacks added in case they aren't in your cfg)
         self.gamma = getattr(cfg, 'gamma', 0.99)
@@ -53,7 +55,7 @@ class PPOAgent:
         visited_enriched = torch.tensor(visited_enriched, dtype=torch.bool).to(self.cfg.device)
         current_node = obs["current_trucks"][self.fleetStatus.active_truck]
 
-        enhanced_features = self._get_enriched_nodes(nodes, visited_enriched)
+        enhanced_features = self._get_enriched_nodes(nodes, obs["visited_targets"])
         
         # Save states for PPO multiple epochs
         self.saved_nodes.append(enhanced_features.detach())
@@ -83,8 +85,14 @@ class PPOAgent:
             returns.insert(0, R)
             
         returns = torch.tensor(returns, dtype=torch.float32).to(self.cfg.device)
+        current_var = returns.var().item()
+        if self.returns_var is None:
+            self.returns_var = current_var
+        else:
+            self.returns_var = (1-self.cfg.returns_var_alpha) * self.returns_var + self.cfg.returns_var_alpha * current_var  # EMA update
         # returns = (returns - returns.mean()) / (returns.std() + 1e-9)
-        returns = returns * self.cfg.reward_scale  # Scale returns if needed
+        # returns = returns * self.cfg.reward_scale  # Scale returns if needed
+        returns = returns / (self.returns_var ** 0.5 + 1e-9) # Scale returns using the EMA of variance
         
         # Prepare old data tensors
         old_logprobs = torch.stack(self.log_probs).detach()
@@ -158,7 +166,7 @@ class PPOAgent:
         # Averages over epochs to report back to main.py seamlessly
         return total_loss / self.ppo_epochs, total_entropy / self.ppo_epochs, total_grad_norm / self.ppo_epochs
     
-    def _get_enriched_nodes(self, nodes, visited_enriched):
+    def _get_enriched_nodes(self, nodes, visited):
         num_nodes = nodes.shape[0]
         # print("trucklist", self.fleetStatus.trucklist)
         # print("trucklist values", list(self.fleetStatus.trucklist.values()))
@@ -170,19 +178,18 @@ class PPOAgent:
         is_truck_position = torch.zeros(num_nodes, dtype=torch.float32).to(self.cfg.device)
         # is_noop_position = torch.zeros(num_nodes, dtype=torch.float32).to(self.cfg.device)
         for i, pos in enumerate(active_truck_positions):
-            is_truck_position[pos] = 1.0
+            is_truck_position[pos] += 1.0
 
             # if is_noop_position[i]:
             #     is_noop_position[pos] = 1.0  # Ensure active trucks are marked as such
-            
-        # print(f"DEBUG: visited_enriched: {visited_enriched}")
-        visited_enriched = visited_enriched.float().unsqueeze(1)  # Convert boolean mask to float for concatenation
-        enriched_nodes = torch.cat([nodes, is_truck_position.unsqueeze(1), visited_enriched], dim=1)
-
         
+        is_truck_position = is_truck_position / self.fleetStatus.num_trucks()  # Normalize by number of trucks to keep values in a reasonable range
+        visited = torch.tensor(visited, dtype=torch.float32).to(self.cfg.device)
+        # print(f"DEBUG: visited_enriched: {visited}")
         # print(f"DEBUG: is_truck_position: {is_truck_position}")
-        # print(f"DEBUG: Enriched nodes: {enriched_nodes}")
-        # raise(Exception("Debugging: Check is_truck_position tensor"))
+        # breakpoint()
+        # visited = visited.float().unsqueeze(1)  # Convert boolean mask to float for concatenation
+        enriched_nodes = torch.cat([nodes, is_truck_position.unsqueeze(1), visited.unsqueeze(1)], dim=1)
         return enriched_nodes    
     
     def _apply_time_constraints(self, active_truck, trucks_dict_state, visited_mask):
@@ -198,6 +205,7 @@ class PPOAgent:
             next_travel_time = time_matrix[current_node, next_node]
             time_to_return = time_matrix[next_node, truck_state.tour[0]] 
             if truck_state.total_time + next_travel_time + time_to_return > self.cfg.max_daily_delivery_time_each_truck:
+                # print(f"DEBUG: Masking node {next_node} for truck {active_truck} due to time constraint. Current time: {truck_state.total_time}, Travel time: {next_travel_time}, Time to return: {time_to_return}")
                 mask[next_node] = True
         return mask    
         
@@ -209,6 +217,9 @@ class PPOAgent:
         # if getattr(self.cfg, 'debug', False): print(f"DEBUG: Action probabilities before masking:")
         dist = torch.distributions.Categorical(probs)
         action = dist.sample()
+        # print(f"DEBUG: Sampled action index: {action.item()} with probability {probs[action].item():.4f}")
+        
+         # Store log probability and value for PPO update
         
         self.actions.append(action.item())
         self.log_probs.append(dist.log_prob(action))

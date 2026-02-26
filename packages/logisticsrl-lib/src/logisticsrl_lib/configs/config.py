@@ -16,12 +16,13 @@ class Config:
     max_daily_delivery_time_each_truck: int = 24  
     
     # --- Training (Optimized for PPO) ---
-    lr: float = 3e-4                 # Increased for PPO (standard is 3e-4)
+    lr: float = 1e-3                 # Increased for PPO (standard is 3e-4)
     episodes: int = 10000            # Increased (VRPs need time to converge)
     log_interval: int = 20
     # gamma: float = 0.99         
     gamma: float = 1         
-    reward_scale: float = 1/150  
+    # reward_scale: float = 1/150  
+    returns_var_alpha: float = 0.01  # Smoothing factor for EMA of returns variance (for normalization)
     
     # --- PPO Specifics ---
     episodes_per_update_batch: int = 10
@@ -50,7 +51,7 @@ class Config:
         # Construct project_name
         self.project_name = f"{self.project_name}_{self.data_dir}"
         # Construct Run Name
-        self.run_name = f"lr{self.lr}_gamma{self.gamma}_sd{self.seed}"
+        # self.run_name = f"lr{self.lr}_gamma{self.gamma}_sd{self.seed}"
 
 def parse_args() -> Config:
     base_cfg = Config()
@@ -63,6 +64,7 @@ def parse_args() -> Config:
     parser.add_argument("--device", type=str, default=base_cfg.device)
     parser.add_argument("--data_dir", type=str, default=base_cfg.data_dir)
     parser.add_argument("--max_daily_delivery_time_for_each_truck", type=int, default=base_cfg.max_daily_delivery_time_each_truck)
+    parser.add_argument("--run_name", type=str, default=base_cfg.run_name)
     
     # Flag: --no-wandb to disable logging
     parser.add_argument("--no-wandb", action="store_true", help="Disable W&B")
@@ -77,5 +79,6 @@ def parse_args() -> Config:
         seed=args.seed,
         device=args.device,
         wandb=not args.no_wandb,
-        data_dir=args.data_dir
+        data_dir=args.data_dir,
+        run_name=args.run_name,
     )

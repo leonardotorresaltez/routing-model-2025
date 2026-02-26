@@ -46,7 +46,16 @@ class GraphPointerPolicy(nn.Module):
 
     def forward(self, nodes: torch.Tensor , current_node: int, visited_mask: torch.Tensor):
         visited_mask = visited_mask.bool()
-        num_nodes = nodes.shape[0]
+        # num_nodes = nodes.shape[0]
+        # active_trucks = nodes[:, 2].sum()
+        # if active_trucks < 5: raise(Exception(f"This is good! The noop mechanism is working. Active trucks: {active_trucks}"))
+        # truck_positions = nodes[:, 2:].T
+        # print(f"DEBUG: Truck positions in forward pass: {truck_positions.cpu().numpy()}")
+        # print(f"DEBUG: Visited mask sum: {visited_mask.sum().item()}")
+        # print(f"DEBUG: Visited mask sum inputs: {nodes[:, 3].sum().item()}")
+        # print(f"DEBUG: Current trucks sum: {nodes[:, 2].sum().item()}")
+        # breakpoint()
+
 
         # 1. Embed the nodes
         h = self.node_embed(nodes)           # [N, D]
