@@ -5,6 +5,7 @@ import torch.nn.functional as F
 import numpy as np
 from loader_lib.data_loader import FleetStatus
 from .policy import GraphPointerPolicy
+from .policy import FactorizedFleetPolicy
 
 # ----------------------------
 # REINFORCEAgent 
@@ -18,14 +19,16 @@ class REINFORCEAgent:
         self.fleetStatus = fleetStatus
         
         
-        self.policy = GraphPointerPolicy(embed_dim=cfg.embed_dim, cfg=cfg)
+        self.policy = FactorizedFleetPolicy(node_dim= (fleetStatus.num_nodes() + 2), embed_dim=cfg.embed_dim, cfg=cfg)
         self.policy.to(cfg.device)
         self.optimizer = optim.Adam(self.policy.parameters(), lr=cfg.lr)
         
         # Buffers for REINFORCE
         self.log_probs = []
         self.rewards = []
+        
         self.entropies = []
+        self.entropy_coef = 0.01
 
         self.step_count = 0
         self.running_mean = 0.0
@@ -35,18 +38,23 @@ class REINFORCEAgent:
         nodes = torch.tensor(obs["nodes"], dtype=torch.float32).to(self.cfg.device)
 
         # masking: Calculate valid moves
-        visited_enriched = self._apply_time_constraints(
-            self.fleetStatus.active_truck,
+        visited_enriched_tensor = self._apply_time_constraints_v3(
             self.fleetStatus.trucklist,
             obs["visited_targets"]
         )
-        visited_enriched = torch.tensor(visited_enriched, dtype=torch.bool).to(self.cfg.device)
-        current_node = obs["current_trucks"][self.fleetStatus.active_truck]
-
-        enhanced_features = self._get_enriched_nodes(nodes)
         
-        action_result = self._select_action(enhanced_features, current_node, visited_enriched)
-        return int(action_result)
+
+        enhanced_features = self._get_enriched_observation_space(obs)
+        
+        truck_positions = obs["current_trucks"]
+        inactive_trucks_mask = torch.tensor(obs["inactive_trucks_mask"], dtype=torch.bool).to(self.cfg.device)
+        
+        
+        truck, node = self._select_action(enhanced_features, truck_positions, visited_enriched_tensor,inactive_trucks_mask)
+        
+
+
+        return int(truck), int(node)
         
 
     def store_reward(self, reward):
@@ -67,8 +75,10 @@ class REINFORCEAgent:
             f"MISALIGNMENT DETECTED! You have {n_probs} actions but {n_rewards} rewards."
 
         R = 0
+        gamma = 0.95
         policy_loss = []
         returns = []
+
         
    
         # Calculate Returns (Cumulative Reward from t to T)
@@ -79,7 +89,7 @@ class REINFORCEAgent:
         # 1	    -0.5	-2.7
         # 0	    -1.0	-3.7
         for r in reversed(self.rewards):
-            R = r + self.cfg.gamma * R
+            R = r + gamma * R
             returns.insert(0, R)
             
         returns = torch.tensor(returns).to(self.cfg.device)
@@ -112,8 +122,10 @@ class REINFORCEAgent:
         normalized_returns = (returns - corrected_mean) / (corrected_sd + 1e-8)
         mean_normalized_return = normalized_returns.mean().item()
         
-        for log_prob, R in zip(self.log_probs, normalized_returns):
+        for log_prob, R, entropy in zip(self.log_probs, normalized_returns, self.entropies):
             policy_loss.append(-log_prob * R)
+            
+            
         
         mean_entropy = torch.stack(self.entropies).mean()
 
@@ -126,8 +138,9 @@ class REINFORCEAgent:
         
         # Clear buffers
         self.log_probs.clear()
-        self.entropies.clear()
         self.rewards.clear()
+        self.entropies.clear()
+       
 
         return loss.item(), mean_entropy.item(), grad_norm, mean_normalized_return
     
@@ -145,34 +158,89 @@ class REINFORCEAgent:
         enriched_nodes = torch.cat([nodes, is_truck_position.unsqueeze(1)], dim=1)
         return enriched_nodes    
     
-    def _apply_time_constraints(self, active_truck, trucks_dict_state, visited_mask):
-            """
-            Modify the visited_mask to also mask nodes that would cause the truck to exceed 24h total time if visited.
-            """
-            mask = visited_mask.copy()  # Start with the original visited mask (targets already visited)
-            # get truck state
-            truck_state = trucks_dict_state[active_truck]
-            current_node = truck_state.tour[-1] if truck_state.tour else 0
+    def _get_enriched_observation_space(self, obs):
+        """
+        Concatenate all observation space elements with dimension N into a single tensor.
+        """
+        # nodes = torch.tensor(obs["nodes"], dtype=torch.float32).to(self.cfg.device)  # Shape: (N, 2)
+        is_target = torch.tensor(obs["is_target"], dtype=torch.float32).unsqueeze(1).to(self.cfg.device)  # Ensure Shape: (N, 1)
+        visited_targets = torch.tensor(obs["visited_targets"], dtype=torch.float32).unsqueeze(1).to(self.cfg.device)  # Ensure Shape: (N, 1)
+        time_matrix = torch.tensor(obs["time_matrix"], dtype=torch.float32).to(self.cfg.device)  # Shape: (N, N)
 
-            time_matrix = self.fleetStatus.time_matrix
-            num_nodes = time_matrix.shape[0]
-            for next_node in range(num_nodes):
-                if mask[next_node]:
-                    continue  # already masked as visited
-                next_travel_time = time_matrix[current_node, next_node]
-                time_to_return = time_matrix[next_node, truck_state.tour[0]]   # time to return to depot from next node
-                if truck_state.total_time + next_travel_time + time_to_return > self.cfg.max_daily_delivery_time_each_truck:
-                    mask[next_node] = True
-            return mask    
+        # Concatenate all tensors with dimension N along the last axis
+        enriched_tensor = torch.cat([time_matrix,is_target, visited_targets], dim=1)  # Shape: (N, 502) if time_matrix is (N, N) and the others are (N, 1)
+
+        return enriched_tensor
+    
+ 
+    
+    
+    def _apply_time_constraints_v3(self, truck_list, visited_mask):
+        """
+        Optimized version of _apply_time_constraints with corrected return time calculation.
+        """
+        time_matrix = torch.as_tensor(self.fleetStatus.time_matrix, device=self.cfg.device)  # Avoid unnecessary tensor creation
+        num_nodes = time_matrix.shape[0]
+        visited_mask = torch.tensor(visited_mask, dtype=torch.bool, device=self.cfg.device)  # Ensure visited_mask is a tensor
+        masks = visited_mask.clone()  # Start with the visited mask
+
+        # Ensure masks has the correct shape for multiple trucks
+        if masks.dim() == 1:
+            masks = masks.unsqueeze(0).repeat(len(truck_list), 1)
+
+        # Precompute return times for all nodes to the depot for each truck
+        return_times = {
+            truck_id: time_matrix[:, truck_state.tour[0]] if truck_state.tour else torch.zeros(num_nodes, device=self.cfg.device)
+            for truck_id, truck_state in enumerate(truck_list.values())
+        }
+
+        # Iterate over trucks
+        for truck_id, truck_state in enumerate(truck_list.values()):
+            current_node = truck_state.tour[-1] if truck_state.tour else 0
+            current_time = truck_state.total_time
+
+            # Calculate total time for all nodes in a vectorized manner
+            travel_times = time_matrix[current_node]
+            total_times = current_time + travel_times + return_times[truck_id]
+
+            # Mask nodes that exceed the time constraint
+            masks[truck_id] |= total_times > self.cfg.max_daily_delivery_time_each_truck
+
+        return masks        
         
-    def _select_action(self, nodes, current_node, visited_enriched):
+     
+                
+        
+    def _select_action(self, nodes, truck_positions, visited_enriched, inactive_trucks_mask):
         """
         Helper to select the next action or return NO-OP if all nodes are visited.
         """
-        probs = self.policy(nodes, current_node, visited_enriched)
-        dist = torch.distributions.Categorical(probs)
-        action = dist.sample()
-        self.entropies.append(dist.entropy())
-        self.log_probs.append(dist.log_prob(action))
 
-        return action.item()        
+        # Pass the mask to the policy
+        truck_probs, node_probs = self.policy(nodes, truck_positions, visited_enriched, inactive_trucks_mask)
+        
+        # ---- sample truck ----
+        truck_dist = torch.distributions.Categorical(truck_probs)
+        truck = truck_dist.sample()
+
+        # ---- sample node for that truck ----
+        num_nodes = nodes.shape[0]
+        
+        if torch.allclose(node_probs[truck], torch.full_like(node_probs[truck], node_probs[truck][0].item())):  # Check if all node probabilities for the selected truck are masked (== -1e9)
+            #print("Todos los valores son iguales ")
+            node_probs = torch.zeros(num_nodes + 1, device=nodes.device)  # Create a new tensor for node probabilities
+            node_probs[-1] = 1.0  # Assign probability 1 to the NO-OP action at the last index
+
+        else:
+            #print("No todos los valores son iguales a -1e9")
+            node_probs = node_probs[truck]
+        
+        node_dist = torch.distributions.Categorical(node_probs)
+        node = node_dist.sample()
+
+        # ---- log prob joint ----
+        log_prob = truck_dist.log_prob(truck) + node_dist.log_prob(node)
+        self.log_probs.append(log_prob)
+        entropy = truck_dist.entropy() + node_dist.entropy()
+        self.entropies.append(entropy)
+        return truck.item(), node.item()

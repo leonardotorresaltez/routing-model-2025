@@ -16,7 +16,6 @@ class TruckState:
 
 @dataclass
 class FleetStatus:
-    active_truck: int = 0
     trucklist: dict[int, TruckState] = field(default_factory=dict)  # key: truck_id, value: TruckState(total_time, tour)
     truck_starts: list[int] = field(default_factory=list)  # List of starting depot indices for each truck
     source_mask: np.ndarray = None  # Mask to identify source nodes (depots)
@@ -33,6 +32,9 @@ class FleetStatus:
         return [state.tour for state in self.trucklist.values()]
     def num_trucks(self):
         return len(self.truck_starts)
+    
+    def total_fleet_time(self):
+        return sum(state.total_time for state in self.trucklist.values())
 
 @dataclass
 class Node:

@@ -5,7 +5,7 @@ import numpy as np
 from gymnasium import spaces
 
 from loader_lib.data_loader import FleetStatus, TruckState
-
+from logisticsrl_lib.reinforcelearning.rewards import NormalizedRewards
 
 class TSPEnv(gym.Env):
     metadata = {"render_modes": []}
@@ -14,10 +14,12 @@ class TSPEnv(gym.Env):
         self,
         cfg,
         fleetStatus: FleetStatus,
+        normalized_rewards: NormalizedRewards
        
     ):
         super().__init__()
         self.fleetStatus = fleetStatus
+        self.normalized_rewards = normalized_rewards
         self.cfg = cfg
         self.num_nodes = self.fleetStatus.num_nodes()
 
@@ -44,7 +46,16 @@ class TSPEnv(gym.Env):
             ,
             # Current position of each truck
             "current_trucks": spaces.MultiDiscrete([self.num_nodes] * self.num_trucks)
+            ,
+            # Mask for inactive trucks
+            "inactive_trucks_mask": spaces.MultiBinary(self.num_trucks),
+            # Distance matrix
+            "time_matrix": spaces.Box(
+                low=0, high=np.inf, shape=(self.num_nodes, self.num_nodes), dtype=np.float32
+            ),
         })
+        
+
 
         # ---------- Action space ----------
         # the total size is num_nodes x num_trucks .  +1 for NO-OP
@@ -64,8 +75,10 @@ class TSPEnv(gym.Env):
         self.visited_targets = np.zeros(self.num_nodes, dtype=np.int8)  # 0 = not visited, 1 = visited    
         self.visited_targets[self.source_mask] = True      
         
-        # truck to act
-        self.fleetStatus.active_truck = 0
+        # Initialize inactive_trucks_mask as a tensor of all False values, meaning all trucks are initially active
+        self.inactive_trucks_mask = torch.zeros(len(self.fleetStatus.trucklist), dtype=torch.bool).to(self.cfg.device)
+ 
+
 
         return self._get_obs(), {}
 
@@ -75,60 +88,39 @@ class TSPEnv(gym.Env):
             "is_target": self.target_mask.astype(np.int8),
             "visited_targets": self.visited_targets.astype(np.int8),
             "current_trucks": self.fleetStatus.truck_positions().copy(), #copy to avoid reference issues
+            "inactive_trucks_mask": self.inactive_trucks_mask.cpu().numpy(),
+            "time_matrix": self.fleetStatus.time_matrix.float(),
         }
 
     def step(self, action):
+        
+        truck_id = action[0]
+        selected_node = action[1]
+        
         self.num_steps += 1
-        truck_id = self.fleetStatus.active_truck       
         terminated = False        
         prev_node = self.fleetStatus.trucklist[truck_id].position
         reward = 0.0
-        if action==self.num_nodes: # NO-OP action
-            reward -=  100.0  # Heavy penalty for NO-OP to encourage visiting customers
+        if selected_node==self.num_nodes: # NO-OP action
+            
+            reward += self.normalized_rewards.getRewardNonOP()
+            self.inactive_trucks_mask[truck_id] = True  # Mark the selected truck as inactive
         else:
-            reward += 10.0  # Reward for visiting a new target
-            self.fleetStatus.trucklist[truck_id].position = action
-            self.visited_targets[action] = True        
-            self.fleetStatus.trucklist[truck_id].tour.append(action)
+            reward += self.normalized_rewards.getRewardVisitBonus()
             
-            dist = self.fleetStatus.time_matrix[prev_node, action]
-            reward -= dist
+            self.fleetStatus.trucklist[truck_id].position = selected_node
+            self.visited_targets[selected_node] = True        
+            self.fleetStatus.trucklist[truck_id].tour.append(selected_node)
+            
+            dist = self.fleetStatus.time_matrix[prev_node, selected_node]
+            reward += self.normalized_rewards.getRewardDistance(prev_node, selected_node)
             self.fleetStatus.trucklist[truck_id].total_time += dist
-        
-            
+                   
         done = self.visited_targets[self.target_mask].all()
 
-        # search for next truck that can act, if all exceed 24h, terminate episode
-        self.fleetStatus.active_truck, terminated = self._get_next_truck_id()  
-        if self.cfg.debug: 
-            print("DEBUG: Next active truck:", self.fleetStatus.active_truck, "Terminated:", terminated)
-            if (terminated): #TODO this is not posible because agent avoid it
-                print(f"No more feasible actions. Terminating episode.")
-
-        #unvisited_count = (self.visited_targets == False).sum().item()
-        #reward -= (unvisited_count * 500.0) # Heavy penalty # Goal: maximize clients
-
-       
-        #avoid infinite loops: if too many steps, terminate episode with heavy penalty
-        if self.num_steps >= self.num_nodes+500:
+        if self.num_steps >= self.num_nodes+10:
             terminated = True
-            reward -= 1000 # Heavy penalty for too many steps (to prevent infinite loops)
-            if self.cfg.debug: print(f"DEBUG: Too many steps ({self.num_steps}). Terminating episode with penalty.")
+                            
         return self._get_obs(), reward, done, terminated, {}
-    
-    
-    def _get_next_truck_id(self):
-        next_truck = (self.fleetStatus.active_truck + 1) % self.num_trucks
-        for _ in range(self.num_trucks):
-            current_time = self.fleetStatus.trucklist[next_truck].total_time
-            times_to_other_nodes = self.fleetStatus.time_matrix[self.fleetStatus.trucklist[next_truck].position]  # Time to all nodes from current position
-            coming_back_times = self.fleetStatus.time_matrix[:, self.fleetStatus.trucklist[next_truck].tour[0]]  # Time to return to depot from all nodes
-            potential_times = current_time + times_to_other_nodes + coming_back_times
-            visited_mask = torch.tensor(self.visited_targets).bool()
-            min_potential_time = potential_times.masked_fill(visited_mask, float('inf')).min()
-            if min_potential_time <= self.cfg.max_daily_delivery_time_each_truck:   #TODO this is not posible because agent avoid it, but we need to check it anyway
-                if self.cfg.debug: print(f"DEBUG: Truck {next_truck} can act (current_time={current_time:.2f}h, min_potential_time={min_potential_time:.2f}h).")
-                return next_truck, False
-            next_truck = (next_truck + 1) % self.num_trucks
-        # If all trucks exceed 24h, return -1 and terminated
-        return -1, True
+
+
