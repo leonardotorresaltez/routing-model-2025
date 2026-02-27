@@ -1,6 +1,5 @@
 import gymnasium as gym
 import torch
-import random
 import numpy as np
 from gymnasium import spaces
 
@@ -59,7 +58,7 @@ class TSPEnv(gym.Env):
 
         # ---------- Action space ----------
         # the total size is num_nodes x num_trucks .  +1 for NO-OP
-        self.action_space = spaces.Discrete(self.num_nodes+ 1)
+        self.action_space = spaces.MultiDiscrete([self.num_trucks, self.num_nodes + 1])
 
         self.reset()        
 
@@ -94,8 +93,7 @@ class TSPEnv(gym.Env):
 
     def step(self, action):
         
-        truck_id = action[0]
-        selected_node = action[1]
+        truck_id, selected_node  = action
         
         self.num_steps += 1
         terminated = False        
