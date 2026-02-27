@@ -118,7 +118,7 @@ class TSPEnv(gym.Env):
                    
         done = self.visited_targets[self.target_mask].all()
 
-        if self.num_steps >= self.num_nodes+10:
+        if self.num_steps >= self.num_nodes + self.cfg.max_extra_steps:
             terminated = True
                             
         return self._get_obs(), reward, done, terminated, {}

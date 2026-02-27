@@ -1,10 +1,8 @@
 import torch
 import torch.optim as optim
-import random
 import torch.nn.functional as F
 import numpy as np
 from loader_lib.data_loader import FleetStatus
-from .policy import GraphPointerPolicy
 from .policy import FactorizedFleetPolicy
 
 # ----------------------------
@@ -12,14 +10,14 @@ from .policy import FactorizedFleetPolicy
 # ---------------------------- 
 class REINFORCEAgent:
 
-
+    _SUM_OTHER_DIM = 2
         
     def __init__(self, cfg, fleetStatus: FleetStatus):
         self.cfg = cfg
         self.fleetStatus = fleetStatus
         
-        
-        self.policy = FactorizedFleetPolicy(node_dim= (fleetStatus.num_nodes() + 2), embed_dim=cfg.embed_dim, cfg=cfg)
+        observation_space_as_features_dimenasion = fleetStatus.num_nodes() + self._SUM_OTHER_DIM # features dimension , check _get_enriched_observation_space
+        self.policy = FactorizedFleetPolicy(size_dim=observation_space_as_features_dimenasion, embed_dim=cfg.embed_dim, cfg=cfg)
         self.policy.to(cfg.device)
         self.optimizer = optim.Adam(self.policy.parameters(), lr=cfg.lr)
         
@@ -28,14 +26,12 @@ class REINFORCEAgent:
         self.rewards = []
         
         self.entropies = []
-        self.entropy_coef = 0.01
 
         self.step_count = 0
         self.running_mean = 0.0
         self.running_var = 0.0
 
     def act(self, obs):
-        nodes = torch.tensor(obs["nodes"], dtype=torch.float32).to(self.cfg.device)
 
         # masking: Calculate valid moves
         visited_enriched_tensor = self._apply_time_constraints_v3(
@@ -43,14 +39,17 @@ class REINFORCEAgent:
             obs["visited_targets"]
         )
         
-
-        enhanced_features = self._get_enriched_observation_space(obs)
+        observation_space_as_features = self._get_enriched_observation_space(obs)  
         
-        truck_positions = obs["current_trucks"]
+        # masking: inactive trucks   
         inactive_trucks_mask = torch.tensor(obs["inactive_trucks_mask"], dtype=torch.bool).to(self.cfg.device)
         
         
-        truck, node = self._select_action(enhanced_features, truck_positions, visited_enriched_tensor,inactive_trucks_mask)
+        truck, node = self._select_action(
+            observation_space_as_features,  
+            obs["current_trucks"], 
+            visited_enriched_tensor,
+            inactive_trucks_mask)
         
 
 
@@ -75,7 +74,6 @@ class REINFORCEAgent:
             f"MISALIGNMENT DETECTED! You have {n_probs} actions but {n_rewards} rewards."
 
         R = 0
-        gamma = 0.95
         policy_loss = []
         returns = []
 
@@ -89,7 +87,7 @@ class REINFORCEAgent:
         # 1	    -0.5	-2.7
         # 0	    -1.0	-3.7
         for r in reversed(self.rewards):
-            R = r + gamma * R
+            R = r + self.cfg.gamma * R
             returns.insert(0, R)
             
         returns = torch.tensor(returns).to(self.cfg.device)
@@ -143,32 +141,18 @@ class REINFORCEAgent:
        
 
         return loss.item(), mean_entropy.item(), grad_norm, mean_normalized_return
-    
-    def _get_enriched_nodes(self, nodes):
-        """
-        Devuelve el tensor de nodos enriquecido con una columna extra que indica si el nodo es la posición actual de algún camión.
-        """  
-        num_nodes = nodes.shape[0]
-        truck_positions = [state.position for state in self.fleetStatus.trucklist.values()]
-        is_truck_position = torch.zeros(num_nodes, dtype=torch.float32).to(self.cfg.device)
-        for pos in truck_positions:
-            if 0 <= pos < num_nodes:
-                is_truck_position[pos] = 1.0
-
-        enriched_nodes = torch.cat([nodes, is_truck_position.unsqueeze(1)], dim=1)
-        return enriched_nodes    
+      
     
     def _get_enriched_observation_space(self, obs):
         """
         Concatenate all observation space elements with dimension N into a single tensor.
         """
-        # nodes = torch.tensor(obs["nodes"], dtype=torch.float32).to(self.cfg.device)  # Shape: (N, 2)
         is_target = torch.tensor(obs["is_target"], dtype=torch.float32).unsqueeze(1).to(self.cfg.device)  # Ensure Shape: (N, 1)
         visited_targets = torch.tensor(obs["visited_targets"], dtype=torch.float32).unsqueeze(1).to(self.cfg.device)  # Ensure Shape: (N, 1)
         time_matrix = torch.tensor(obs["time_matrix"], dtype=torch.float32).to(self.cfg.device)  # Shape: (N, N)
 
         # Concatenate all tensors with dimension N along the last axis
-        enriched_tensor = torch.cat([time_matrix,is_target, visited_targets], dim=1)  # Shape: (N, 502) if time_matrix is (N, N) and the others are (N, 1)
+        enriched_tensor = torch.cat([time_matrix,is_target, visited_targets], dim=1)  # Shape: (N, N+2) if time_matrix is (N, N) and the others are (N, 1)
 
         return enriched_tensor
     
@@ -227,12 +211,9 @@ class REINFORCEAgent:
         num_nodes = nodes.shape[0]
         
         if torch.allclose(node_probs[truck], torch.full_like(node_probs[truck], node_probs[truck][0].item())):  # Check if all node probabilities for the selected truck are masked (== -1e9)
-            #print("Todos los valores son iguales ")
             node_probs = torch.zeros(num_nodes + 1, device=nodes.device)  # Create a new tensor for node probabilities
             node_probs[-1] = 1.0  # Assign probability 1 to the NO-OP action at the last index
-
         else:
-            #print("No todos los valores son iguales a -1e9")
             node_probs = node_probs[truck]
         
         node_dist = torch.distributions.Categorical(node_probs)

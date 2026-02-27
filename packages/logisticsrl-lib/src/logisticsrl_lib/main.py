@@ -81,8 +81,7 @@ def train():
 
 
         while not (done or terminated):
-            truck, node = agent.act(obs)
-            action = (truck, node)
+            action = agent.act(obs)
             if cfg.debug: print(f"DEBUG: Selected action: {action}")
             obs, reward, done, terminated, _ = env.step(action)            
             agent.store_reward(reward)

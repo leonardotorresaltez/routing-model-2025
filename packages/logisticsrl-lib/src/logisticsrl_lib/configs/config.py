@@ -22,6 +22,7 @@ class Config:
     log_interval: int = 20
     beta: float = 0.99  # Moving average baseline factor for reward normalization. Less beta means faster adaptation to recent rewards, more beta means more stability.
     gamma: float = 0.95  # Discount factor for rewards
+    max_extra_steps: int = 10  # Maximum extra steps allowed beyond the number of nodes, to prevent infinite episodes
 
     entropy_bonus: float = 0.01  # Coefficient for entropy bonus to encourage exploration
     
