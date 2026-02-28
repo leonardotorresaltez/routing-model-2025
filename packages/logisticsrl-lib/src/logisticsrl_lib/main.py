@@ -83,7 +83,7 @@ def train():
         cfg=cfg,
         fleetStatus=fleetStatus   
     )
-    sys.exit(0)
+  
 
     # Training Loop, tqdm for a nice progress bar    
     pbar = tqdm(range(cfg.episodes))
