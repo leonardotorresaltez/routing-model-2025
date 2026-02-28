@@ -95,13 +95,13 @@ class TSPEnv(gym.Env):
             self.fleetStatus.trucklist[truck_id].noop = True  # Mark the truck's state as having taken a NO-OP
             if self.cfg.debug: print(f"DEBUG: Truck {truck_id} takes NO-OP. Marking as finished.")
         else:
-            reward += 5  # Reward for visiting a new target
+            reward += 1  # Reward for visiting a new target
             self.fleetStatus.trucklist[truck_id].position = action
             self.visited_targets[action] = True        
             self.fleetStatus.trucklist[truck_id].tour.append(action)
             
             dist = self.fleetStatus.time_matrix[prev_node, action]
-            reward -= dist / 10 # COnsider putting /5
+            reward -= dist * self.cfg.distance_penalty_scale
             self.fleetStatus.trucklist[truck_id].total_time += dist
         
             

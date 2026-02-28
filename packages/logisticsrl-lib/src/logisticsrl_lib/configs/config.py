@@ -22,7 +22,8 @@ class Config:
     # gamma: float = 0.99         
     gamma: float = 1         
     # reward_scale: float = 1/150  
-    returns_var_alpha: float = 0.01  # Smoothing factor for EMA of returns variance (for normalization)
+    returns_var_alpha: float = 1/200  # Smoothing factor for EMA of returns variance (for normalization). Approx half-life of 200 batches.
+    distance_penalty_scale: float = 1/5   # Scale for the distance penalty in the reward function (to keep rewards in a reasonable range for PPO)
     
     # --- PPO Specifics ---
     episodes_per_update_batch: int = 10
