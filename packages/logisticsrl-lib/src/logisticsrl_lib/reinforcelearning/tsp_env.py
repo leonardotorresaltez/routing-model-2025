@@ -44,7 +44,7 @@ class TSPEnv(gym.Env):
             "visited_targets": spaces.Box(low=0, high=1, shape=(self.num_nodes,), dtype=np.int8)
             ,
             # Current position of each truck
-            "current_trucks": spaces.MultiDiscrete([self.num_nodes] * self.num_trucks)
+            "truck_positions": spaces.MultiDiscrete([self.num_nodes] * self.num_trucks)
             ,
             # Mask for inactive trucks
             "inactive_trucks_mask": spaces.MultiBinary(self.num_trucks),
@@ -52,6 +52,12 @@ class TSPEnv(gym.Env):
             "time_matrix": spaces.Box(
                 low=0, high=np.inf, shape=(self.num_nodes, self.num_nodes), dtype=np.float32
             ),
+            # Add truck_starts to observation space
+            "truck_starts": spaces.MultiDiscrete([self.num_nodes] * self.num_trucks),
+            # Add total_time of each truck to observation space
+            "truck_times": spaces.Box(
+                low=0, high=np.inf, shape=(self.num_trucks,), dtype=np.float32
+            )
         })
         
 
@@ -86,9 +92,11 @@ class TSPEnv(gym.Env):
             "nodes": self.fleetStatus.nodes.numpy(),
             "is_target": self.target_mask.astype(np.int8),
             "visited_targets": self.visited_targets.astype(np.int8),
-            "current_trucks": self.fleetStatus.truck_positions().copy(), #copy to avoid reference issues
+            "truck_positions": self.fleetStatus.truck_positions().copy(), #copy to avoid reference issues
             "inactive_trucks_mask": self.inactive_trucks_mask.cpu().numpy(),
             "time_matrix": self.fleetStatus.time_matrix.float(),
+            "truck_starts": self.fleetStatus.truck_starts.copy(),
+            "truck_times": self.fleetStatus.truck_times().copy(),
         }
 
     def step(self, action):

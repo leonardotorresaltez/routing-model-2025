@@ -64,8 +64,8 @@ def train():
 
     
     agent = REINFORCEAgent(
-        cfg=cfg,
-        fleetStatus=fleetStatus   
+        cfg=cfg
+        
     )
 
 

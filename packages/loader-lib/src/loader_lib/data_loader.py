@@ -35,6 +35,9 @@ class FleetStatus:
     
     def total_fleet_time(self):
         return sum(state.total_time for state in self.trucklist.values())
+    
+    def truck_times(self):
+        return np.array([state.total_time for state in self.trucklist.values()], dtype=np.float32)    
 
 @dataclass
 class Node:

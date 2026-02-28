@@ -12,12 +12,11 @@ class REINFORCEAgent:
 
     _SUM_OTHER_DIM = 2
         
-    def __init__(self, cfg, fleetStatus: FleetStatus):
+    def __init__(self, cfg):
         self.cfg = cfg
-        self.fleetStatus = fleetStatus
+ 
         
-        observation_space_as_features_dimenasion = fleetStatus.num_nodes() + self._SUM_OTHER_DIM # features dimension , check _get_enriched_observation_space
-        self.policy = FactorizedFleetPolicy(size_dim=observation_space_as_features_dimenasion, embed_dim=cfg.embed_dim, cfg=cfg)
+        self.policy = FactorizedFleetPolicy( embed_dim=cfg.embed_dim, cfg=cfg)
         self.policy.to(cfg.device)
         self.optimizer = optim.Adam(self.policy.parameters(), lr=cfg.lr)
         
@@ -34,11 +33,9 @@ class REINFORCEAgent:
     def act(self, obs):
 
         # masking: Calculate valid moves
-        visited_enriched_tensor = self._apply_time_constraints_v3(
-            self.fleetStatus.trucklist,
-            obs["visited_targets"]
-        )
+        visited_enriched_tensor = self._apply_time_constraints_v3(obs)
         
+        # enrich observation space concatenating 
         observation_space_as_features = self._get_enriched_observation_space(obs)  
         
         # masking: inactive trucks   
@@ -47,7 +44,7 @@ class REINFORCEAgent:
         
         truck, node = self._select_action(
             observation_space_as_features,  
-            obs["current_trucks"], 
+            obs["truck_positions"], 
             visited_enriched_tensor,
             inactive_trucks_mask)
         
@@ -139,29 +136,33 @@ class REINFORCEAgent:
  
     
     
-    def _apply_time_constraints_v3(self, truck_list, visited_mask):
+    def _apply_time_constraints_v3(self, obs):
         """
         Optimized version of _apply_time_constraints with corrected return time calculation.
         """
-        time_matrix = torch.as_tensor(self.fleetStatus.time_matrix, device=self.cfg.device)  # Avoid unnecessary tensor creation
-        num_nodes = time_matrix.shape[0]
+        visited_mask = obs["visited_targets"]
+        time_matrix = obs["time_matrix"]
+        truck_positions = obs["truck_positions"]
+        truck_starts = obs["truck_starts"]
+        truck_times = obs["truck_times"]        
+        
+        time_matrix = torch.as_tensor(time_matrix, device=self.cfg.device)  # Avoid unnecessary tensor creation
         visited_mask = torch.tensor(visited_mask, dtype=torch.bool, device=self.cfg.device)  # Ensure visited_mask is a tensor
         masks = visited_mask.clone()  # Start with the visited mask
 
         # Ensure masks has the correct shape for multiple trucks
         if masks.dim() == 1:
-            masks = masks.unsqueeze(0).repeat(len(truck_list), 1)
+            masks = masks.unsqueeze(0).repeat(len(truck_positions), 1)
 
         # Precompute return times for all nodes to the depot for each truck
         return_times = {
-            truck_id: time_matrix[:, truck_state.tour[0]] if truck_state.tour else torch.zeros(num_nodes, device=self.cfg.device)
-            for truck_id, truck_state in enumerate(truck_list.values())
+            truck_id: time_matrix[:, truck_starts[truck_id]]
+            for truck_id in range(len(truck_starts))
         }
 
-        # Iterate over trucks
-        for truck_id, truck_state in enumerate(truck_list.values()):
-            current_node = truck_state.tour[-1] if truck_state.tour else 0
-            current_time = truck_state.total_time
+        # Iterate over trucks using truck_positions
+        for truck_id, current_node in enumerate(truck_positions):
+            current_time = truck_times[truck_id]
 
             # Calculate total time for all nodes in a vectorized manner
             travel_times = time_matrix[current_node]
@@ -192,7 +193,7 @@ class REINFORCEAgent:
         
         if torch.allclose(node_probs[truck], torch.full_like(node_probs[truck], node_probs[truck][0].item())):  # Check if all node probabilities for the selected truck are masked (== -1e9)
             node_probs = torch.zeros(num_nodes + 1, device=nodes.device)  # Create a new tensor for node probabilities
-            node_probs[-1] = 1.0  # Assign probability 1 to the NO-OP action at the last index
+            node_probs[-1] = 1.0  # Assign probability 1 to the NO-OP action at the last index wich is -1 == num_nodes == NO-OP action
         else:
             node_probs = node_probs[truck]
         

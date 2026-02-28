@@ -147,13 +147,15 @@ class GraphPointerPolicy_old(nn.Module):
 # FactorizedFleetPolicy Policy Model
 # ----------------------------    
 class FactorizedFleetPolicy(nn.Module):
-    def __init__(self, cfg, size_dim=507, embed_dim=128):
+    _SUM_OTHER_DIM = 2
+    
+    def __init__(self, cfg, embed_dim=128):
         super().__init__()
         self.cfg = cfg
 
         
         #  embedding
-        self.features = nn.Linear(size_dim, embed_dim)
+        self.features = None
         # Simple graph message passing (1 step)
         self.msg_linear = nn.Linear(embed_dim, embed_dim)
 
@@ -172,6 +174,11 @@ class FactorizedFleetPolicy(nn.Module):
         visited_mask: [T, N] bool  (True = forbidden)
         inactive_trucks_mask: [T] bool (True = inactive)
         """
+
+        # Dynamically initialize self.features if it is None
+        if self.features is None:
+            size_dim = observation_space_as_features.size(0) + self._SUM_OTHER_DIM   # Get the number of nodes dynamically
+            self.features = nn.Linear(size_dim, self.cfg.embed_dim)
 
         h = self.features(observation_space_as_features)           # [N, D]
         truck_h = h[truck_positions] 
@@ -197,4 +204,4 @@ class FactorizedFleetPolicy(nn.Module):
  
         
         if self.cfg.debug: print(f"DEBUG: Action probabilities shape: {node_probs.cpu().detach().numpy().shape} | Sum: {node_probs.sum().item():.4f}")
-        return truck_probs, node_probs    
+        return truck_probs, node_probs
