@@ -1,9 +1,11 @@
-import torch
-import torch.optim as optim
-import torch.nn.functional as F
 import numpy as np
+import torch
+import torch.nn.functional as F
+import torch.optim as optim
 from loader_lib.data_loader import FleetStatus
+
 from .policy import FactorizedFleetPolicy
+
 
 # ----------------------------
 # REINFORCEAgent 
@@ -117,18 +119,72 @@ class REINFORCEAgent:
         return loss.item(), 0, 0, 0
       
     
+    
     def _get_enriched_observation_space(self, obs):
         """
-        Concatenate all observation space elements with dimension N into a single tensor.
+        Concatenate spatial, status, and fleet context into a fixed-size feature vector.
+        Removed the N*N time_matrix to improve generalization.
         """
-        is_target = torch.tensor(obs["is_target"], dtype=torch.float32).unsqueeze(1).to(self.cfg.device)  # Ensure Shape: (N, 1)
-        visited_targets = torch.tensor(obs["visited_targets"], dtype=torch.float32).unsqueeze(1).to(self.cfg.device)  # Ensure Shape: (N, 1)
-        time_matrix = torch.tensor(obs["time_matrix"], dtype=torch.float32).to(self.cfg.device)  # Shape: (N, N)
+        device = self.cfg.device
+        
+        # 1. Coordinates (Spatial information) - Shape: [N, 2]
+        coords = torch.tensor(obs["nodes"], dtype=torch.float32, device=device)
+        num_nodes = coords.shape[0]
 
-        # Concatenate all tensors with dimension N along the last axis
-        enriched_tensor = torch.cat([time_matrix,is_target, visited_targets], dim=1)  # Shape: (N, N+2) if time_matrix is (N, N) and the others are (N, 1)
+        # 2. Node Status - Shape: [N, 1] each
+        is_target = torch.tensor(obs["is_target"], dtype=torch.float32, device=device).unsqueeze(1)
+        visited = torch.tensor(obs["visited_targets"], dtype=torch.float32, device=device).unsqueeze(1)
+
+        # 3. Global Fleet Context (Broadcasted) - Shape: [N, 3]
+        inactive_mask = torch.tensor(obs["inactive_trucks_mask"], dtype=torch.float32, device=device)
+        truck_times = torch.tensor(obs["truck_times"], dtype=torch.float32, device=device)
+        
+        active_ratio = (1.0 - inactive_mask).mean().reshape(1, 1)
+        avg_fleet_time = truck_times.mean().reshape(1, 1)
+        max_fleet_time = truck_times.max().reshape(1, 1)
+        
+        fleet_stats = torch.cat([active_ratio, avg_fleet_time, max_fleet_time], dim=1).repeat(num_nodes, 1)
+
+        # 4. Depot / Home Information
+        truck_starts = obs["truck_starts"] # List of depot indices
+        
+        # Feature: Is this node a home depot? (And how many trucks live there)
+        home_counts = torch.zeros(num_nodes, 1, device=device)
+        for start_idx in truck_starts:
+            home_counts[start_idx] += 1
+            
+        # Feature: Proximity to safety (Distance to nearest depot)
+        time_matrix = torch.tensor(obs["time_matrix"], dtype=torch.float32, device=device)
+        depot_indices = list(set(truck_starts))
+        dist_to_depots = time_matrix[:, depot_indices]
+        min_dist_to_depot, _ = torch.min(dist_to_depots, dim=1, keepdim=True)
+
+        # 5. Final Concatenation - Total Dimension: 9
+        # [Coords(2), Target(1), Visited(1), Fleet(3), Home(1), MinDist(1)]
+        enriched_tensor = torch.cat([
+            coords,
+            is_target,
+            visited,
+            fleet_stats,
+            home_counts,
+            min_dist_to_depot
+        ], dim=1)
 
         return enriched_tensor
+
+
+    # def _get_enriched_observation_space(self, obs):
+    #     """
+    #     Concatenate all observation space elements with dimension N into a single tensor.
+    #     """
+    #     is_target = torch.tensor(obs["is_target"], dtype=torch.float32).unsqueeze(1).to(self.cfg.device)  # Ensure Shape: (N, 1)
+    #     visited_targets = torch.tensor(obs["visited_targets"], dtype=torch.float32).unsqueeze(1).to(self.cfg.device)  # Ensure Shape: (N, 1)
+    #     time_matrix = torch.tensor(obs["time_matrix"], dtype=torch.float32).to(self.cfg.device)  # Shape: (N, N)
+
+    #     # Concatenate all tensors with dimension N along the last axis
+    #     enriched_tensor = torch.cat([time_matrix,is_target, visited_targets], dim=1)  # Shape: (N, N+2) if time_matrix is (N, N) and the others are (N, 1)
+
+    #     return enriched_tensor
     
  
     

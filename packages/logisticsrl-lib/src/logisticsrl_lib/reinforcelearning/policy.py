@@ -1,8 +1,10 @@
 import math
+
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import numpy as np
+
 
 # ----------------------------
 # GraphPointer Policy Model
@@ -177,7 +179,7 @@ class FactorizedFleetPolicy(nn.Module):
 
         # Dynamically initialize self.features if it is None
         if self.features is None:
-            size_dim = observation_space_as_features.size(0) + self._SUM_OTHER_DIM   # Get the number of nodes dynamically
+            size_dim = size_dim = observation_space_as_features.size(1)  # number of nodes dynamically
             self.features = nn.Linear(size_dim, self.embed_dim)
 
         h = self.features(observation_space_as_features)           # [N, D]
