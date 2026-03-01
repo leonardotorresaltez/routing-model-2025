@@ -1,4 +1,5 @@
 import math
+import math
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -10,20 +11,18 @@ class GraphPointerPolicy(nn.Module):
     def __init__(self, cfg, node_dim, embed_dim):
         super().__init__()
         self.cfg = cfg
-        self.embed_dim = embed_dim  # Save for the attention scaling factor
+        self.embed_dim = embed_dim  
         
-        # Node embedding
+        # 1. NEW: LayerNorm inside the Node Embedding
         self.node_embed = nn.Sequential(
             nn.Linear(node_dim, embed_dim),
             nn.ReLU(),
-            nn.Linear(embed_dim, embed_dim) # Deep embedding
+            nn.Linear(embed_dim, embed_dim),
+            nn.LayerNorm(embed_dim)  # <--- Added here to stabilize initial representations
         )
 
-        # -------------------------------------------------
         # NO-OP Learnable Parameters
-        # -------------------------------------------------
         self.noop_key = nn.Parameter(torch.randn(embed_dim) / math.sqrt(embed_dim))
-        # self.noop_bias = nn.Parameter(torch.tensor([-50.0])) 
         self.noop_bias = nn.Parameter(torch.tensor([0.0])) 
 
         # Attention Context
@@ -31,38 +30,28 @@ class GraphPointerPolicy(nn.Module):
         self.ctx_key = nn.Linear(embed_dim, embed_dim)
         self.ctx_value = nn.Linear(embed_dim, embed_dim)
 
+        # 2. NEW: LayerNorm for the Residual Connection
+        self.state_norm = nn.LayerNorm(embed_dim) # <--- Added here
+
         # Pointer mechanism (Actor)
         self.query = nn.Linear(embed_dim, embed_dim)
         self.key = nn.Linear(embed_dim, embed_dim)
         
-        # -------------------------------------------------
-        # NEW: Critic Head (Value Network)
-        # -------------------------------------------------
+        # Critic Head (Value Network)
         self.value_head = nn.Sequential(
             nn.Linear(embed_dim, embed_dim),
             nn.ReLU(),
             nn.Linear(embed_dim, 1)
         )
 
-    def forward(self, nodes: torch.Tensor , current_node: int, visited_mask: torch.Tensor):
+    def forward(self, nodes: torch.Tensor, current_node: int, visited_mask: torch.Tensor):
         visited_mask = visited_mask.bool()
-        # num_nodes = nodes.shape[0]
-        # active_trucks = nodes[:, 2].sum()
-        # if active_trucks < 5: raise(Exception(f"This is good! The noop mechanism is working. Active trucks: {active_trucks}"))
-        # truck_positions = nodes[:, 2:].T
-        # print(f"DEBUG: Truck positions in forward pass: {truck_positions.cpu().numpy()}")
-        # print(f"DEBUG: Visited mask sum: {visited_mask.sum().item()}")
-        # print(f"DEBUG: Visited mask sum inputs: {nodes[:, 3].sum().item()}")
-        # print(f"DEBUG: Current trucks sum: {nodes[:, 2].sum().item()}")
-        # breakpoint()
 
-
-        # 1. Embed the nodes
+        # 1. Embed the nodes (Now outputting normalized embeddings)
         h = self.node_embed(nodes)           # [N, D]
         
         # 2. Compute Dynamic Graph Context (Attention)
         curr_q = self.ctx_query(h[current_node])  # [D]
-        
         ctx_k = self.ctx_key(h)                   # [N, D]
         ctx_v = self.ctx_value(h)                 # [N, D]
         
@@ -75,20 +64,20 @@ class GraphPointerPolicy(nn.Module):
         # -------------------------------------------------
         # NEW: Critic Value Prediction
         # -------------------------------------------------
-        # We evaluate the state based on the current node and the graph context
         state_representation = h[current_node] + graph_ctx
+        state_representation = self.state_norm(state_representation) # <--- Normalize the sum!
+
+        # Critic Value Prediction
         state_value = self.value_head(state_representation).squeeze() # Scalar
 
-        # 3. Final Pointer Mechanism (Actor)
+        # 4. Final Pointer Mechanism (Actor)
         query = self.query(state_representation)         # [D]
         keys = self.key(h)                               # [N, D]
 
-        # FIXED: Add scaling factor here
         scores = torch.matmul(keys, query) / math.sqrt(self.embed_dim) 
         scores = scores.masked_fill(visited_mask, -1e9)
 
-        # 4. Add the NO-OP Score
-        # FIXED: Add scaling factor here too
+        # 5. Add the NO-OP Score
         noop_score = (torch.dot(query, self.noop_key) / math.sqrt(self.embed_dim)) + self.noop_bias
         noop_score = noop_score.view(1)
         if getattr(self.cfg, 'debug', False): print(f"DEBUG: Action scores before masking: {scores.cpu().detach().numpy()}")
@@ -98,9 +87,5 @@ class GraphPointerPolicy(nn.Module):
         
         final_scores = torch.cat([scores, noop_score], dim=0)          # [N + 1]
         probs = F.softmax(final_scores, dim=0)                         # [N + 1]
-        
-        # if getattr(self.cfg, 'debug', False): 
-            # print(f"DEBUG: Action probabilities shape: {probs.cpu().detach().numpy().shape} | Sum: {probs.sum().item():.4f}")
-            # print(f"DEBUG: Action probabilities: {probs.cpu().detach().numpy()}")
             
-        return probs, state_value # <--- NEW: Return both Actor and Critic outputs
+        return probs, state_value
