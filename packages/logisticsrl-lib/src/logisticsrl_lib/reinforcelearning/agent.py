@@ -10,7 +10,7 @@ from .policy import FactorizedFleetPolicy
 # ---------------------------- 
 class REINFORCEAgent:
 
-    _SUM_OTHER_DIM = 2
+
         
     def __init__(self, cfg):
         self.cfg = cfg
@@ -26,9 +26,7 @@ class REINFORCEAgent:
         
         self.entropies = []
 
-        self.step_count = 0
-        self.running_mean = 0.0
-        self.running_var = 0.0
+
 
     def act(self, obs):
 
@@ -91,24 +89,23 @@ class REINFORCEAgent:
         
         # Normalize returns for stability
         returns = returns.float()
-        normalized_returns = (returns - returns.mean()) / (returns.std() + 1e-9)        
+        returns = (returns - returns.mean()) / (returns.std() + 1e-9)        
 
 
-        mean_normalized_return = normalized_returns.mean().item()
+       
         
-        for log_prob, R, entropy in zip(self.log_probs, normalized_returns, self.entropies):
+        for log_prob, R, entropy in zip(self.log_probs, returns, self.entropies):
             policy_loss.append(-log_prob * R)
             entropy_loss.append(entropy)
             
         
-        mean_entropy = torch.stack(entropy_loss).mean()
+      
 
         self.optimizer.zero_grad()
         
         loss = torch.stack(policy_loss).sum() - self.cfg.entropy_bonus * torch.stack(entropy_loss).sum() #each policy_loss item is a scalar tensor, needs stack to sum
         
         loss.backward()
-        grad_norm = torch.nn.utils.clip_grad_norm_(self.policy.parameters(), max_norm=0.5) # Gradient clipping to prevent exploding gradients
         self.optimizer.step()
         
         # Clear buffers
@@ -117,7 +114,7 @@ class REINFORCEAgent:
         self.entropies.clear()
        
 
-        return loss.item(), mean_entropy.item(), grad_norm, mean_normalized_return
+        return loss.item(), 0, 0, 0
       
     
     def _get_enriched_observation_space(self, obs):
@@ -154,8 +151,8 @@ class REINFORCEAgent:
         if masks.dim() == 1:
             masks = masks.unsqueeze(0).repeat(len(truck_positions), 1)
 
-        # Precompute return times for all nodes to the depot for each truck
-        return_times = {
+        # Precompute return times from all nodes to the depot for each truck
+        return_times_from_next_nodes = {
             truck_id: time_matrix[:, truck_starts[truck_id]]
             for truck_id in range(len(truck_starts))
         }
@@ -164,9 +161,11 @@ class REINFORCEAgent:
         for truck_id, current_node in enumerate(truck_positions):
             current_time = truck_times[truck_id]
 
-            # Calculate total time for all nodes in a vectorized manner
-            travel_times = time_matrix[current_node]
-            total_times = current_time + travel_times + return_times[truck_id]
+            # Calculate travel times from the current node to all other nodes
+            travel_times_to_next_nodes = time_matrix[current_node]
+
+            # Use precomputed return times
+            total_times = current_time + travel_times_to_next_nodes + return_times_from_next_nodes[truck_id]
 
             # Mask nodes that exceed the time constraint
             masks[truck_id] |= total_times > self.cfg.max_daily_delivery_time_each_truck

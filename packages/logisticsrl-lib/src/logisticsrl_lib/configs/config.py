@@ -8,7 +8,7 @@ class Config:
     run_name: str = "default"
     seed: int = 42
     device: str = "cpu"
-    wandb: bool = True  # Toggle W&B logging
+    wandb: bool = False  # Toggle W&B logging
     data_dir: str = "data_version_2"  # data path
     debug = False
     
@@ -20,7 +20,6 @@ class Config:
     lr: float = 1e-3
     episodes: int = 300 if not debug else 2
     log_interval: int = 20
-    beta: float = 0.99  # Moving average baseline factor for reward normalization. Less beta means faster adaptation to recent rewards, more beta means more stability.
     gamma: float = 0.95  # Discount factor for rewards
     max_extra_steps: int = 10  # Maximum extra steps allowed beyond the number of nodes, to prevent infinite episodes
 

@@ -34,7 +34,11 @@ class NormalizedRewards:
         else:
             return -self.global_mean
         
+    def getRewardTotalFleetTime(self, total_fleet_time):
 
+        #efficiency_reward = - (total_fleet_time - 500) / 86.5     
+        #return np.clip(efficiency_reward, -3.0, 3.0) 
+        return   ( 1 - abs(total_fleet_time - 500) / 500 ) *10
             
 
     def getRewardDistance(self, prev_node, selected_node):

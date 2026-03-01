@@ -153,7 +153,7 @@ class FactorizedFleetPolicy(nn.Module):
         super().__init__()
         self.cfg = cfg
 
-        
+        self.embed_dim = embed_dim  
         #  embedding
         self.features = None
         # Simple graph message passing (1 step)
@@ -178,7 +178,7 @@ class FactorizedFleetPolicy(nn.Module):
         # Dynamically initialize self.features if it is None
         if self.features is None:
             size_dim = observation_space_as_features.size(0) + self._SUM_OTHER_DIM   # Get the number of nodes dynamically
-            self.features = nn.Linear(size_dim, self.cfg.embed_dim)
+            self.features = nn.Linear(size_dim, self.embed_dim)
 
         h = self.features(observation_space_as_features)           # [N, D]
         truck_h = h[truck_positions] 

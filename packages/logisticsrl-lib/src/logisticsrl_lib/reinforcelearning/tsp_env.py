@@ -65,6 +65,7 @@ class TSPEnv(gym.Env):
         # ---------- Action space ----------
         # the total size is num_nodes x num_trucks .  +1 for NO-OP
         self.action_space = spaces.MultiDiscrete([self.num_trucks, self.num_nodes + 1])
+        #self.action_space = spaces.Discrete(self.num_nodes+ 1)
 
         self.reset()        
 
@@ -127,6 +128,9 @@ class TSPEnv(gym.Env):
         if self.num_steps >= self.num_nodes + self.cfg.max_extra_steps:
             terminated = True
                             
+        if done or terminated:
+            reward += self.normalized_rewards.getRewardTotalFleetTime(self.fleetStatus.total_fleet_time())
+            
         return self._get_obs(), reward, done, terminated, {}
 
 
