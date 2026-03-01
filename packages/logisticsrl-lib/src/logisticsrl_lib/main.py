@@ -46,29 +46,15 @@ def train():
     print_verification_info(nodesObjs, data, truck_starts)   
     
     
-    fleetStatus = FleetStatus(
+    env = TSPEnv(
+        cfg=cfg,
         truck_starts=truck_starts,
         source_mask=source_mask,
         time_matrix=data["time_matrix"],
         nodes=nodes
     )
-        
-    rewards = NormalizedRewards(cfg,time_matrix=data["time_matrix"])    
     
-    env = TSPEnv(
-        cfg=cfg,
-        fleetStatus=fleetStatus,
-        normalized_rewards=rewards
-    )
-
-
-    
-    agent = REINFORCEAgent(
-        cfg=cfg
-        
-    )
-
-
+    agent = REINFORCEAgent(cfg)
 
     # Training Loop, tqdm for a nice progress bar    
     pbar = tqdm(range(cfg.episodes))

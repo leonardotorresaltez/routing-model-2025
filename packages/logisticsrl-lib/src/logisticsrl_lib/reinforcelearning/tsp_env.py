@@ -12,14 +12,23 @@ class TSPEnv(gym.Env):
     def __init__(       
         self,
         cfg,
-        fleetStatus: FleetStatus,
-        normalized_rewards: NormalizedRewards
+        truck_starts,
+        source_mask,    
+        time_matrix,
+        nodes
        
     ):
         super().__init__()
-        self.fleetStatus = fleetStatus
-        self.normalized_rewards = normalized_rewards
         self.cfg = cfg
+        
+        self.fleetStatus = FleetStatus(
+            truck_starts=truck_starts,
+            source_mask=source_mask,
+            time_matrix=time_matrix,
+            nodes=nodes
+        )
+        
+        self.normalized_rewards = NormalizedRewards(cfg,time_matrix)           
         self.num_nodes = self.fleetStatus.num_nodes()
 
         self.source_mask = self.fleetStatus.source_mask
