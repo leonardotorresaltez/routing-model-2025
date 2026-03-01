@@ -16,7 +16,7 @@ class GraphPointerPolicy(nn.Module):
         # 1. NEW: LayerNorm inside the Node Embedding
         self.node_embed = nn.Sequential(
             nn.Linear(node_dim, embed_dim),
-            nn.ReLU(),
+            nn.LeakyReLU(0.01),
             nn.Linear(embed_dim, embed_dim),
             nn.LayerNorm(embed_dim)  # <--- Added here to stabilize initial representations
         )
@@ -40,7 +40,7 @@ class GraphPointerPolicy(nn.Module):
         # Critic Head (Value Network)
         self.value_head = nn.Sequential(
             nn.Linear(embed_dim, embed_dim),
-            nn.ReLU(),
+            nn.LeakyReLU(0.01),
             nn.Linear(embed_dim, 1)
         )
 
