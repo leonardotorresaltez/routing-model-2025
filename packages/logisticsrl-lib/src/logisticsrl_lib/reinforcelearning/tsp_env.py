@@ -52,7 +52,7 @@ class TSPEnv(gym.Env):
 
         self.reset()        
 
-    def reset(self, seed=None, options=None):
+    def reset(self, n_nodes=None, n_trucks=None, seed=None, options=None):
 
         super().reset(seed=seed)
         
@@ -62,12 +62,78 @@ class TSPEnv(gym.Env):
         }       
         self.num_steps = 0        
         self.visited_targets = np.zeros(self.num_nodes, dtype=np.int8)  # 0 = not visited, 1 = visited    
-        self.visited_targets[self.source_mask] = True      
+        self.visited_targets[self.source_mask] = 1      
         
         self.fleetStatus.active_truck = 0
 
-        self.finished_trucks = set() # to keep track of trucks that have decided no-op or have no feasible actions left
+        # self.finished_trucks = set() # to keep track of trucks that have decided no-op or have no feasible actions left
         self.noop_count = 0
+
+        # Curiculum learning:
+        if n_nodes is not None:
+            # 1. Find the indices where visited_targets is currently False (0)
+            not_visited_indices = np.where(self.visited_targets == 0)[0]
+            if self.cfg.debug:
+                print(f"""DEBUG: Curriculum reset: 
+                      n_nodes={n_nodes}, 
+                      not_visited_count={len(not_visited_indices)}, 
+                      not_visited_indices={not_visited_indices}""")
+
+            # Optional: Ensure 'n' isn't larger than the available not visited nodes to avoid errors
+            n_nodes_not_visited = len(not_visited_indices)
+            n_nodes_fixed = min(n_nodes, len(not_visited_indices))
+
+            # 2. Randomly select 'n' indices from the available not_visited_indices without replacement
+            indices_to_block = np.random.choice(not_visited_indices, 
+                                                size = n_nodes_not_visited - n_nodes_fixed, 
+                                                replace=False)
+            if self.cfg.debug:
+                print(f"""DEBUG: Curriculum reset: 
+                      n_nodes_fixed={n_nodes_fixed}, 
+                      indices_to_block={indices_to_block}""")
+                
+            if not len(indices_to_block) == n_nodes_not_visited - n_nodes_fixed:
+                print("indices_to_block", indices_to_block)
+                raise ValueError(f"""Error: More or less selected indices ({len(indices_to_block)}) 
+                                 than allowed by n_nodes ({n_nodes_fixed}). 
+                                 Check the logic for selecting indices.""")
+            
+            if not len(set(indices_to_block)) == len(indices_to_block):
+                print("indices_to_block", indices_to_block)
+                raise ValueError(f"""Error: Duplicate indices found in indices_to_block. 
+                                 This should not happen with replace=False. 
+                                 Check the logic for selecting indices.""")
+            
+            if self.cfg.debug:
+                print(f"""DEBUG: Curriculum learning: 
+                      n_nodes={n_nodes}, 
+                      n_nodes_fixed={n_nodes_fixed}, 
+                      not_visited_count={len(not_visited_indices)}, 
+                      indices_to_block={indices_to_block}""")
+            # 3. Reset the entire array to False (0)
+            self.visited_targets = np.zeros(self.num_nodes, dtype=np.int8)
+
+            # 4. Set the randomly selected indices and the source indices back to True (1)
+            self.visited_targets[indices_to_block] = 1
+            self.visited_targets[self.source_mask] = 1 
+            
+            # if self.visited_targets.sum() != n_nodes_fixed + 1:
+            #     print("visited_targets", self.visited_targets)
+            #     raise ValueError(f"""Error: The total number of visited targets 
+            #                      after curriculum reset ({self.visited_targets.sum()}) 
+            #                      does not match the expected number of nodes ({n_nodes_fixed}). 
+            #                      Check the logic for resetting visited_targets.""")
+                
+
+            if self.cfg.debug:
+                print(f"DEBUG: After curriculum reset, visited_targets={self.visited_targets}")
+        
+        if n_trucks is not None:
+            for truck_id in range(self.num_trucks):
+                if truck_id < n_trucks:
+                    self.fleetStatus.trucklist[truck_id].finished = False  # Ensure this truck can act
+                else:
+                    self.fleetStatus.trucklist[truck_id].finished = True  # Mark as finished (no actions) if beyond n_trucks
 
         return self._get_obs(), {}
 
@@ -91,13 +157,14 @@ class TSPEnv(gym.Env):
             # reward -= (unvisited_count * 1) # Heavy penalty # Goal: maximize clients
 
             self.noop_count += 1
-            self.finished_trucks.add(truck_id) # Mark this truck as finished (no more actions)
-            self.fleetStatus.trucklist[truck_id].noop = True  # Mark the truck's state as having taken a NO-OP
+            # self.finished_trucks.add(truck_id) # Mark this truck as finished (no more actions)
+            self.fleetStatus.trucklist[truck_id].finished = True  # Mark the truck's state as having taken a NO-OP
             if self.cfg.debug: print(f"DEBUG: Truck {truck_id} takes NO-OP. Marking as finished.")
         else:
             reward += 1  # Reward for visiting a new target
             self.fleetStatus.trucklist[truck_id].position = action
-            self.visited_targets[action] = True        
+            self.visited_targets[action] = 1        
+            if self.cfg.debug: print(f"DEBUG: Truck {truck_id} moves from node {prev_node} to node {action}. Visited targets updated: {self.visited_targets}")
             self.fleetStatus.trucklist[truck_id].tour.append(action)
             
             dist = self.fleetStatus.time_matrix[prev_node, action]
@@ -118,31 +185,12 @@ class TSPEnv(gym.Env):
        
         #avoid infinite loops: if too many steps, terminate episode with heavy penalty
         if self.num_steps >= self.num_nodes+500:
-            terminated = True
-            reward -= 1000 # Heavy penalty for too many steps (to prevent infinite loops)
-            if self.cfg.debug: print(f"DEBUG: Too many steps ({self.num_steps}). Terminating episode with penalty.")
+            raise ValueError(f"Too many steps ({self.num_steps}). Possible infinite loop. Terminating episode.")
+            # terminated = True
+            # reward -= 1000 # Heavy penalty for too many steps (to prevent infinite loops)
+            # if self.cfg.debug: print(f"DEBUG: Too many steps ({self.num_steps}). Terminating episode with penalty.")
         return self._get_obs(), reward, done, terminated, {}
     
-    
-    # def _get_next_truck_id(self):
-    #     next_truck = (self.fleetStatus.active_truck + 1) % self.num_trucks
-    #     for _ in range(self.num_trucks):
-    #         if next_truck in self.finished_trucks:
-    #             next_truck = (next_truck + 1) % self.num_trucks
-    #             continue
-    #         current_time = self.fleetStatus.trucklist[next_truck].total_time
-    #         times_to_other_nodes = self.fleetStatus.time_matrix[self.fleetStatus.trucklist[next_truck].position]  # Time to all nodes from current position
-    #         coming_back_times = self.fleetStatus.time_matrix[:, self.fleetStatus.trucklist[next_truck].tour[0]]  # Time to return to depot from all nodes
-    #         potential_times = current_time + times_to_other_nodes + coming_back_times
-    #         visited_mask = torch.tensor(self.visited_targets).bool()
-    #         min_potential_time = potential_times.masked_fill(visited_mask, float('inf')).min()
-    #         if min_potential_time <= self.cfg.max_daily_delivery_time_each_truck:   #TODO this is not posible because agent avoid it, but we need to check it anyway
-    #             if self.cfg.debug: print(f"DEBUG: Truck {next_truck} can act (current_time={current_time:.2f}h, min_potential_time={min_potential_time:.2f}h).")
-    #             return next_truck, False
-    #         self.finished_trucks.add(next_truck)
-    #         next_truck = (next_truck + 1) % self.num_trucks
-    #     # If all trucks exceed 24h, return -1 and terminated
-    #     return -1, True
     
     def _min_potential_delivery_time(self, truck_id):
         truck = self.fleetStatus.trucklist[truck_id]
@@ -161,13 +209,16 @@ class TSPEnv(gym.Env):
         candidate = (self.fleetStatus.active_truck + 1) % self.num_trucks
 
         for _ in range(self.num_trucks):
-            if candidate not in self.finished_trucks:
+            if self.cfg.debug: 
+                print(f"DEBUG: Checking truck {candidate} (current_time={self.fleetStatus.trucklist[candidate].total_time:.2f}h), (finished={self.fleetStatus.trucklist[candidate].finished}).")
+            if not self.fleetStatus.trucklist[candidate].finished:
                 if self._truck_can_still_deliver(candidate):
                     if self.cfg.debug:
                         print(f"DEBUG: Truck {candidate} can act (current_time={self.fleetStatus.trucklist[candidate].total_time:.2f}h, min_potential_time={self._min_potential_delivery_time(candidate):.2f}h).")
                     return candidate, False
                 else:
-                    self.finished_trucks.add(candidate)
+                    # self.finished_trucks.add(candidate)
+                    self.fleetStatus.trucklist[candidate].finished = True  # Mark as finished since it can't deliver anymore
 
             candidate = (candidate + 1) % self.num_trucks
 

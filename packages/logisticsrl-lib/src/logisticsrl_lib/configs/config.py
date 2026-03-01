@@ -17,7 +17,7 @@ class Config:
     
     # --- Training (Optimized for PPO) ---
     lr: float = 1e-3                 # Increased for PPO (standard is 3e-4)
-    episodes: int = 10000            # Increased (VRPs need time to converge)
+    episodes: int = int(1e5)            
     log_interval: int = 20
     # gamma: float = 0.99         
     gamma: float = 1         
@@ -38,7 +38,7 @@ class Config:
     # --- Debug ---
     debug: bool = False  # Set to True for quick testing with minimal episodes and smaller model
     if debug:
-        episodes = 1
+        episodes = 10
         episodes_per_update_batch = 1
         wandb = False
 
@@ -68,7 +68,7 @@ def parse_args() -> Config:
     parser.add_argument("--run_name", type=str, default=base_cfg.run_name)
     
     # Flag: --no-wandb to disable logging
-    parser.add_argument("--no-wandb", action="store_true", help="Disable W&B")
+    # parser.add_argument("--no-wandb", action="store_true", help="Disable W&B")
 
     args = parser.parse_args()
 
@@ -79,7 +79,7 @@ def parse_args() -> Config:
         embed_dim=args.embed_dim,
         seed=args.seed,
         device=args.device,
-        wandb=not args.no_wandb,
+        # wandb=not args.no_wandb,
         data_dir=args.data_dir,
         run_name=args.run_name,
     )

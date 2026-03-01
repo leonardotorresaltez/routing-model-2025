@@ -173,8 +173,8 @@ class PPOAgent:
         # raise(Exception("Debugging: Check trucklist values"))
 
         truck_positions = [state.position for state in self.fleetStatus.trucklist.values()]
-        truck_noops = [state.noop for state in self.fleetStatus.trucklist.values()]
-        active_truck_positions = [truck_position for truck_position, noop in zip(truck_positions, truck_noops) if not noop]
+        truck_finishers = [state.finished for state in self.fleetStatus.trucklist.values()]
+        active_truck_positions = [truck_position for truck_position, finished in zip(truck_positions, truck_finishers) if not finished]
         is_truck_position = torch.zeros(num_nodes, dtype=torch.float32).to(self.cfg.device)
         # is_noop_position = torch.zeros(num_nodes, dtype=torch.float32).to(self.cfg.device)
         for i, pos in enumerate(active_truck_positions):

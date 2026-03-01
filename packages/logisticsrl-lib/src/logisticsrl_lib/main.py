@@ -8,10 +8,10 @@ import sys
 
 from logisticsrl_lib.configs.config import parse_args
 from logisticsrl_lib.reinforcelearning.tsp_env import TSPEnv
-# ---> NEW: Import PPOAgent
 from logisticsrl_lib.reinforcelearning.agent import PPOAgent
 from loader_lib.data_loader import FleetStatus, MDVRPDataLoader, TruckState
 from common_lib.evaluation_utils import evaluate_solution
+from common_lib.curriculum_learning_utils import get_curriculum_iterator
 from common_lib.visualization_utils_plotly import create_routing_graph, visualize_routing_solution
 
 def set_seed(seed):
@@ -31,6 +31,11 @@ def train():
     nodes = torch.tensor([[n.lat, n.lon] for n in nodesObjs], dtype=torch.float32)    
     source_mask = np.array([getattr(node, 'isSource', False) for node in nodesObjs], dtype=bool)  
     truck_starts = [truck.depot_idx for truck in data["trucks"]]
+    n_total_trucks = len(data["trucks"])
+    curriculum = get_curriculum_iterator(start_nodes = 5, n_total_nodes = data["num_nodes"], ratio_trucks_nodes = n_total_trucks / data["num_nodes"])
+    current_n_nodes, current_n_trucks = next(curriculum)
+    n_successes = 0
+    max_reward = 0.0
 
     if cfg.wandb:
         wandb.init(
@@ -67,7 +72,7 @@ def train():
     print("episode is=", cfg.episodes)
     
     for episode in pbar:
-        obs, _ = env.reset()
+        obs, _ = env.reset(n_nodes=current_n_nodes, n_trucks=current_n_trucks)
         done, terminated = False, False
         episode_reward = 0.0
 
@@ -80,7 +85,29 @@ def train():
             episode_reward += reward
 
         total_destinations_visited, total_time, pct_intersections = evaluate_solution(env.fleetStatus.all_tours(), data, truck_starts, cfg)                
+        if total_destinations_visited > current_n_nodes + len(data['depots']):
+            print("Current tours:", env.fleetStatus.all_tours())
+            raise ValueError(f"Error: Visited more destinations ({total_destinations_visited}) than the current curriculum allows (max {current_n_nodes + len(data['depots'])}). Check the curriculum reset logic.")
         
+        if episode_reward > max_reward and current_n_nodes == data["num_nodes"]:
+            max_reward = episode_reward
+            print(f"New max reward: {max_reward:.2f} at episode {episode}")
+            report(episode, episode_reward, loss, total_time, total_destinations_visited,
+                   pct_intersections, env, data, truck_starts, pbar, current_n_nodes, current_n_trucks)
+
+        if pct_intersections < 0.001 and env.noop_count < n_total_trucks: # If we have a perfect solution, advance the curriculum
+            n_successes += 1
+            if n_successes >= 5: # Require n successful episodes before advancing curriculum (to avoid flukes)
+                current_n_nodes, current_n_trucks = next(curriculum)
+                n_successes = 0
+                report(episode, episode_reward, loss, total_time, total_destinations_visited,
+                       pct_intersections, env, data, truck_starts, pbar, current_n_nodes, current_n_trucks)
+                print("-"*50)
+                print(f"Curriculum advanced! Now training on {current_n_nodes} nodes and {current_n_trucks} trucks.")
+                print("-"*50)
+        else:
+            n_successes = 0  # We want consecutive successes, so reset the count if we fail
+
         if str(env.fleetStatus.all_tours()) == last_tours:
             no_change_count += 1
             limit = 51
@@ -95,17 +122,7 @@ def train():
         if episode % cfg.episodes_per_update_batch == 0 and episode > 0:
             loss, entropy, grad_norm = agent.update()
 
-        report_every_50_episodes(
-            episode,
-            episode_reward,
-            loss if 'loss' in locals() else 0.0,
-            total_time,
-            total_destinations_visited,
-            pct_intersections,
-            env,
-            data,
-            truck_starts,
-            pbar)
+        
 
         if cfg.wandb:
             wandb.log({
@@ -125,11 +142,10 @@ def train():
     if cfg.wandb:
         wandb.finish()
 
-def report_every_50_episodes(
+def report(
     episode, episode_reward, loss, total_time, total_destinations_visited,
-    pct_intersections, env, data, truck_starts, pbar
+    pct_intersections, env, data, truck_starts, pbar, current_n_nodes, current_n_trucks
 ):
-    if episode % 50 == 0:
         print(
             f"Episode {episode:4d} | "
             f"Total reward: {episode_reward:.3f} | "
@@ -151,7 +167,7 @@ def report_every_50_episodes(
                 customer.delivered = False 
 
         G = create_routing_graph(data["depots"], data["customers"], env.fleetStatus.all_tours(), truck_starts)
-        visualize_routing_solution(G, step=episode, title_suffix="Final step", save_path=f"checkpoints/visualization_episode{episode}.html")
+        visualize_routing_solution(G, step=episode, title_suffix="Final step", save_path=f"checkpoints/visualization_nnodes{current_n_nodes}_ntrucks{current_n_trucks}_reward{int(episode_reward*10)}.html")
 
 def print_verification_info(nodesObjs, data, truck_starts):
     print("\n" + "="*40)
