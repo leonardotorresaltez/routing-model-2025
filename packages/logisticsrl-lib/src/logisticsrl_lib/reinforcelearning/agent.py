@@ -4,6 +4,7 @@ import torch.nn as nn
 import random
 import torch.nn.functional as F
 import numpy as np
+import wandb
 from loader_lib.data_loader import FleetStatus
 from .policy import GraphPointerPolicy
 
@@ -17,6 +18,8 @@ class PPOAgent:
         self.fleetStatus = fleetStatus
         
         self.policy = GraphPointerPolicy(embed_dim=cfg.embed_dim, node_dim=4, cfg=cfg).to(cfg.device)
+        if cfg.wandb:
+            wandb.watch(self.policy, log="all", log_freq=cfg.log_interval)
         self.optimizer = optim.Adam(self.policy.parameters(), lr=cfg.lr)
 
         self.returns_var = None  # For storing returns' variance to later normalize them with EMA

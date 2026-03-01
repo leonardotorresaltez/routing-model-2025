@@ -12,23 +12,22 @@ class Config:
     data_dir: str = "data_version_1"  
     
     # --- Model ---
-    embed_dim: int = 2**6 
+    embed_dim: int = 128 
     max_daily_delivery_time_each_truck: int = 24  
     
     # --- Training (Optimized for PPO) ---
-    lr: float = 1e-3                 # Increased for PPO (standard is 3e-4)
+    lr: float = 3e-4                 # Increased for PPO (standard is 3e-4)
     episodes: int = int(1e5)            
     log_interval: int = 20
-    # gamma: float = 0.99         
-    gamma: float = 1         
-    # reward_scale: float = 1/150  
+    gamma: float = 0.99 
     returns_var_alpha: float = 1/200  # Smoothing factor for EMA of returns variance (for normalization). Approx half-life of 200 batches.
     distance_penalty_scale: float = 1/5   # Scale for the distance penalty in the reward function (to keep rewards in a reasonable range for PPO)
+    curriculum_learning_successes_required: int = 25
     
     # --- PPO Specifics ---
-    episodes_per_update_batch: int = 10
+    episodes_per_update_batch: int = 64
     ppo_epochs: int = 4              # How many times to loop over the batch
-    eps_clip: float = 0.1            # PPO clipping ratio
+    eps_clip: float = 0.2            # PPO clipping ratio
     value_coef: float = 0.5          # How much the Critic loss matters
     entropy_bonus: float = 0.01      # typical value around 0.01
 

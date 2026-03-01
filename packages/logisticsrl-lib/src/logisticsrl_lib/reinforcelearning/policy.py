@@ -7,7 +7,7 @@ import torch.nn.functional as F
 # GraphPointer Policy Model (Actor-Critic)
 # ----------------------------    
 class GraphPointerPolicy(nn.Module):
-    def __init__(self, cfg, node_dim, embed_dim=128):
+    def __init__(self, cfg, node_dim, embed_dim):
         super().__init__()
         self.cfg = cfg
         self.embed_dim = embed_dim  # Save for the attention scaling factor
