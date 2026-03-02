@@ -1,46 +1,60 @@
 import torch
 import torch.optim as optim
 import torch.nn as nn
-import random
 import torch.nn.functional as F
 import numpy as np
 import wandb
+
 from loader_lib.data_loader import FleetStatus
 from .policy import GraphPointerPolicy
 
+
 # ----------------------------
-# PPOAgent 
-# ---------------------------- 
+# PPOAgent
+# ----------------------------
 class PPOAgent:
-        
+
     def __init__(self, cfg, fleetStatus: FleetStatus):
         self.cfg = cfg
         self.fleetStatus = fleetStatus
-        
-        self.policy = GraphPointerPolicy(embed_dim=cfg.embed_dim, node_dim=4, cfg=cfg).to(cfg.device)
+
+        self.policy = GraphPointerPolicy(
+            embed_dim=cfg.embed_dim,
+            node_dim=4,
+            cfg=cfg
+        ).to(cfg.device)
+
         if cfg.wandb:
             wandb.watch(self.policy, log="all", log_freq=cfg.log_interval)
+
         self.optimizer = optim.Adam(self.policy.parameters(), lr=cfg.lr)
 
-        self.returns_var = None  # For storing returns' variance to later normalize them with EMA
-        
-        # PPO Hyperparameters (Fallbacks added in case they aren't in your cfg)
+        # PPO hyperparameters
         self.gamma = getattr(cfg, 'gamma', 0.99)
         self.eps_clip = getattr(cfg, 'eps_clip', 0.2)
         self.ppo_epochs = getattr(cfg, 'ppo_epochs', 4)
         self.entropy_bonus = getattr(cfg, 'entropy_bonus', 0.01)
         self.value_coef = getattr(cfg, 'value_coef', 0.5)
 
-        # PPO Memory Buffers
+        # EMA variance normalization
+        self.returns_var = None
+
+        # Memory
         self.saved_nodes = []
         self.saved_curr_nodes = []
         self.saved_visited = []
+
         self.actions = []
         self.log_probs = []
         self.values = []
         self.rewards = []
         self.terminal_flags = []
 
+        self.last_noop_prob = torch.tensor(0.0)
+
+    # ------------------------------------------------
+    # ACTION
+    # ------------------------------------------------
     def act(self, obs):
         # if getattr(self.cfg, 'debug', False): print(f"DEBUG: Observations received: {obs.keys()}")
         # if getattr(self.cfg, 'debug', False): print(f"DEBUG: Nodes: {obs['nodes']}")
@@ -55,7 +69,12 @@ class PPOAgent:
             self.fleetStatus.trucklist,
             obs["visited_targets"]
         )
-        visited_enriched = torch.tensor(visited_enriched, dtype=torch.bool).to(self.cfg.device)
+
+        visited_enriched = torch.tensor(
+            visited_enriched,
+            dtype=torch.bool
+        ).to(self.cfg.device)
+
         current_node = obs["current_trucks"][self.fleetStatus.active_truck]
 
         enhanced_features = self._get_enriched_nodes(nodes, obs["visited_targets"])
@@ -74,11 +93,12 @@ class PPOAgent:
         self.rewards.append(reward)
         self.terminal_flags.append(is_terminal)
 
+    # ------------------------------------------------
+    # PPO UPDATE
+    # ------------------------------------------------
     def update(self):
-        """
-        Proximal Policy Optimization (PPO) Update
-        """        
-        # Calculate Returns (Cumulative Reward from t to T)
+
+        # ---------- RETURNS ----------
         R = 0
         returns = []
         for reward, is_terminal in zip(reversed(self.rewards), reversed(self.terminal_flags)):
@@ -86,77 +106,109 @@ class PPOAgent:
                 R = 0  # reset return at episode boundaries
             R = reward + self.gamma * R
             returns.insert(0, R)
-            
+
         returns = torch.tensor(returns, dtype=torch.float32).to(self.cfg.device)
+
         current_var = returns.var().item()
         if self.returns_var is None:
             self.returns_var = current_var
         else:
-            self.returns_var = (1-self.cfg.returns_var_alpha) * self.returns_var + self.cfg.returns_var_alpha * current_var  # EMA update
-        # returns = (returns - returns.mean()) / (returns.std() + 1e-9)
-        # returns = returns * self.cfg.reward_scale  # Scale returns if needed
-        returns = returns / (self.returns_var ** 0.5 + 1e-9) # Scale returns using the EMA of variance
-        
-        # Prepare old data tensors
+            alpha = self.cfg.returns_var_alpha
+            self.returns_var = (1 - alpha) * self.returns_var + alpha * current_var
+
+        returns = returns / (self.returns_var ** 0.5 + 1e-9)
+
         old_logprobs = torch.stack(self.log_probs).detach()
-        old_values = torch.stack(self.values).detach()
-        old_actions = torch.tensor(self.actions, dtype=torch.long).to(self.cfg.device)
-        
-        # Calculate Advantages
-        advantages = returns - old_values.squeeze()
+        old_values = torch.stack(self.values).detach().squeeze()
+        old_actions = torch.tensor(self.actions).to(self.cfg.device)
+
+        # ---------- ADVANTAGES ----------
+        advantages = returns - old_values
         advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-9)
-        
-        total_loss, total_entropy, total_grad_norm = 0, 0, 0
-        
-        # PPO Multiple Epochs Loop
+
+        adv_std = advantages.std().item()
+
+        # stats
+        total_loss = 0
+        total_entropy = 0
+        total_grad_norm = 0
+        total_kl = 0
+        total_clip_frac = 0
+
         for _ in range(self.ppo_epochs):
+
             new_logprobs = []
             new_values = []
             entropies = []
-            
-            # Re-evaluate the saved states using the UPDATED policy
-            for nodes, curr_node, visited in zip(self.saved_nodes, self.saved_curr_nodes, self.saved_visited):
-                probs, val = self.policy(nodes, curr_node, visited)
+
+            # ✅ SINGLE FORWARD PASS (FIXED)
+            for i, (nodes, curr_node, visited) in enumerate(
+                zip(self.saved_nodes, self.saved_curr_nodes, self.saved_visited)
+            ):
+                probs, value = self.policy(nodes, curr_node, visited)
                 dist = torch.distributions.Categorical(probs)
-                
-                new_values.append(val)
+
+                new_values.append(value)
                 entropies.append(dist.entropy())
-                
-            # Compute new log probabilities for the EXACT SAME actions taken previously
+                new_logprobs.append(dist.log_prob(old_actions[i]))
+
             new_values = torch.stack(new_values).squeeze()
-            entropies = torch.stack(entropies)
-            
-            # Reconstruct dists to get new log_probs
-            for i, (nodes, curr_node, visited) in enumerate(zip(self.saved_nodes, self.saved_curr_nodes, self.saved_visited)):
-                 probs, _ = self.policy(nodes, curr_node, visited)
-                 dist = torch.distributions.Categorical(probs)
-                 new_logprobs.append(dist.log_prob(old_actions[i]))
-                 
             new_logprobs = torch.stack(new_logprobs)
-            
-            # -----------------------------------------
-            # Surrogate Loss Calculation
-            # -----------------------------------------
+            entropies = torch.stack(entropies)
+
+            # ---------- PPO LOSS ----------
             ratios = torch.exp(new_logprobs - old_logprobs)
-            
+
             surr1 = ratios * advantages
-            surr2 = torch.clamp(ratios, 1 - self.eps_clip, 1 + self.eps_clip) * advantages
-            
+            surr2 = torch.clamp(
+                ratios,
+                1 - self.eps_clip,
+                1 + self.eps_clip
+            ) * advantages
+
             actor_loss = -torch.min(surr1, surr2).mean()
-            critic_loss = nn.MSELoss()(new_values, returns)
-            
-            loss = actor_loss + (self.value_coef * critic_loss) - (self.entropy_bonus * entropies.mean())
-            
+            critic_loss = F.mse_loss(new_values, returns)
+
+            loss = (
+                actor_loss
+                + self.value_coef * critic_loss
+                - self.entropy_bonus * entropies.mean()
+            )
+
+            # ---------- DIAGNOSTICS ----------
+            approx_kl = (old_logprobs - new_logprobs).mean()
+
+            clip_fraction = (
+                ((ratios > 1 + self.eps_clip) |
+                 (ratios < 1 - self.eps_clip))
+                .float()
+                .mean()
+            )
+
+            # ---------- BACKPROP ----------
             self.optimizer.zero_grad()
             loss.backward()
-            grad_norm = torch.nn.utils.clip_grad_norm_(self.policy.parameters(), max_norm=0.5)
+
+            grad_norm = torch.nn.utils.clip_grad_norm_(
+                self.policy.parameters(),
+                0.5
+            )
+
             self.optimizer.step()
-            
+
             total_loss += loss.item()
             total_entropy += entropies.mean().item()
             total_grad_norm += grad_norm.item()
-            
-        # Clear Memory Buffers
+            total_kl += approx_kl.item()
+            total_clip_frac += clip_fraction.item()
+
+        # ---------- EXPLAINED VARIANCE ----------
+        explained_var = self._explained_variance(
+            returns.detach(),
+            new_values.detach()
+        )
+
+        # ---------- CLEAR MEMORY ----------
         self.saved_nodes.clear()
         self.saved_curr_nodes.clear()
         self.saved_visited.clear()
@@ -166,8 +218,20 @@ class PPOAgent:
         self.rewards.clear()
         self.terminal_flags.clear()
 
-        # Averages over epochs to report back to main.py seamlessly
-        return total_loss / self.ppo_epochs, total_entropy / self.ppo_epochs, total_grad_norm / self.ppo_epochs
+        return (
+            total_loss / self.ppo_epochs,
+            total_entropy / self.ppo_epochs,
+            total_grad_norm / self.ppo_epochs,
+            explained_var.item(),
+            total_kl / self.ppo_epochs,
+            total_clip_frac / self.ppo_epochs,
+            adv_std,
+            self.last_noop_prob.item(),
+        )
+
+    def _explained_variance(self, returns, values):
+        var_y = torch.var(returns)
+        return 1 - torch.var(returns - values) / (var_y + 1e-8)
     
     def _get_enriched_nodes(self, nodes, visited):
         num_nodes = nodes.shape[0]
@@ -210,22 +274,20 @@ class PPOAgent:
             if truck_state.total_time + next_travel_time + time_to_return > self.cfg.max_daily_delivery_time_each_truck:
                 # print(f"DEBUG: Masking node {next_node} for truck {active_truck} due to time constraint. Current time: {truck_state.total_time}, Travel time: {next_travel_time}, Time to return: {time_to_return}")
                 mask[next_node] = True
-        return mask    
-        
+        return mask        
+
     def _select_action(self, nodes, current_node, visited_enriched):
-        # NEW: Now unpacks the value prediction too
+
         probs, state_value = self.policy(nodes, current_node, visited_enriched)
-        
-        if getattr(self.cfg, 'debug', False): print(f"DEBUG: Action probabilities before masking: {(probs.cpu().detach().numpy() * 1000).astype(int)}")
-        # if getattr(self.cfg, 'debug', False): print(f"DEBUG: Action probabilities before masking:")
+
         dist = torch.distributions.Categorical(probs)
         action = dist.sample()
-        # print(f"DEBUG: Sampled action index: {action.item()} with probability {probs[action].item():.4f}")
-        
-         # Store log probability and value for PPO update
-        
+
+        # diagnostics
+        self.last_noop_prob = probs[-1].detach()
+
         self.actions.append(action.item())
         self.log_probs.append(dist.log_prob(action))
-        self.values.append(state_value) # Save the critic's assessment
+        self.values.append(state_value)
 
         return action.item()

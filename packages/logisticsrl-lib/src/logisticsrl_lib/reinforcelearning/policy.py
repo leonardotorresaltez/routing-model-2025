@@ -44,11 +44,11 @@ class GraphPointerPolicy(nn.Module):
             nn.Linear(embed_dim, 1)
         )
         
-        # Orthogonal initialization for the value head to stabilize early training
-        for m in self.value_head:
-            if isinstance(m, nn.Linear):
-                nn.init.orthogonal_(m.weight, gain=1.0)
-                nn.init.zeros_(m.bias)
+        # # Orthogonal initialization for the value head to stabilize early training
+        # for m in self.value_head:
+        #     if isinstance(m, nn.Linear):
+        #         nn.init.orthogonal_(m.weight, gain=1.0)
+        #         nn.init.zeros_(m.bias)
 
     def forward(self, nodes: torch.Tensor, current_node: int, visited_mask: torch.Tensor):
         visited_mask = visited_mask.bool()

@@ -122,7 +122,15 @@ def train():
 
         # Update happens every X episodes, handling the full batched PPO loop internally!
         if episode % cfg.episodes_per_update_batch == 0 and episode > 0:
-            loss, entropy, grad_norm = agent.update()
+            (loss,
+            entropy,
+            grad_norm,
+            explained_var,
+            approx_kl,
+            clip_frac,
+            adv_std,
+            noop_prob
+            ) = agent.update()
 
         
 
@@ -137,7 +145,12 @@ def train():
                 "Total destinations visited": total_destinations_visited,
                 "Percentage of intersections": pct_intersections,
                 "Mean gradient norm": grad_norm if 'grad_norm' in locals() else 0.0,
-                "NO-OP count": env.noop_count
+                "NO-OP count": env.noop_count,
+                "Explained variance": explained_var if 'explained_var' in locals() else 0.0,
+                "Approx KL": approx_kl if 'approx_kl' in locals() else 0.0,
+                "Clip fraction": clip_frac if 'clip_frac' in locals() else 0.0,
+                "Advantage std": adv_std if 'adv_std' in locals() else 0.0,
+                "NOOP probability": noop_prob if 'noop_prob' in locals() else 0.0,
             })
             
         pbar.set_description(f"Rw: {episode_reward:.2f}")
