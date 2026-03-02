@@ -167,7 +167,13 @@ class PPOAgent:
             ) * advantages
 
             actor_loss = -torch.min(surr1, surr2).mean()
-            critic_loss = F.mse_loss(new_values, returns)
+
+            value_clipped = old_values + (new_values - old_values).clamp(-0.2, 0.2)
+
+            loss1 = (new_values - returns)**2
+            loss2 = (value_clipped - returns)**2
+
+            critic_loss = torch.max(loss1, loss2).mean()
 
             loss = (
                 actor_loss

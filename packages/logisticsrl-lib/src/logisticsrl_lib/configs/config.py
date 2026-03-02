@@ -16,7 +16,7 @@ class Config:
     max_daily_delivery_time_each_truck: int = 24  
     
     # --- Training (Optimized for PPO) ---
-    lr: float = 3e-4                 # Increased for PPO (standard is 3e-4)
+    lr: float = 5e-4                 # Increased for PPO (standard is 3e-4)
     episodes: int = int(1e5)            
     log_interval: int = 20
     gamma: float = 0.99 
@@ -25,11 +25,11 @@ class Config:
     curriculum_learning_successes_required: int = 25
     
     # --- PPO Specifics ---
-    episodes_per_update_batch: int = 64
-    ppo_epochs: int = 4              # How many times to loop over the batch
+    episodes_per_update_batch: int = 128
+    ppo_epochs: int = 3              # How many times to loop over the batch
     eps_clip: float = 0.2            # PPO clipping ratio
-    value_coef: float = 0.5          # How much the Critic loss matters
-    entropy_bonus: float = 0.01      # typical value around 0.01
+    value_coef: float = 0.25          # How much the Critic loss matters
+    entropy_bonus: float = 0.005      # typical value around 0.01
 
     
     max_constant_routes =  episodes_per_update_batch * 2 + 2  
