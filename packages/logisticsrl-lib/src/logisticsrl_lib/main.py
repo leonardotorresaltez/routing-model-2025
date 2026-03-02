@@ -98,13 +98,14 @@ def train():
         if pct_intersections < 0.001 and env.noop_count < current_n_trucks: # If we have a perfect solution, advance the curriculum
             n_successes += 1
             if n_successes >= cfg.curriculum_learning_successes_required: # Require n successful episodes before advancing curriculum (to avoid flukes)
-                current_n_nodes, current_n_trucks = next(curriculum)
                 n_successes = 0
                 report(episode, episode_reward, loss if 'loss' in locals() else 0.0, total_time, total_destinations_visited,
                        pct_intersections, env, data, truck_starts, pbar, current_n_nodes, current_n_trucks)
+
                 print("-"*50)
                 print(f"Curriculum advanced! Now training on {current_n_nodes} nodes and {current_n_trucks} trucks.")
                 print("-"*50)
+                current_n_nodes, current_n_trucks = next(curriculum)
         else:
             # n_successes = 0  # We want consecutive successes, so reset the count if we fail
             pass
@@ -126,6 +127,7 @@ def train():
         
 
         if cfg.wandb and episode % cfg.log_interval == 0:
+        # if cfg.wandb and episode % 1 == 0:
             wandb.log({
                 "Total reward": episode_reward,
                 "Last Loss": loss if 'loss' in locals() else 0.0,
