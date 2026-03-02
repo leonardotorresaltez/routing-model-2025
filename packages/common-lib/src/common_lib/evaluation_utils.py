@@ -1,4 +1,7 @@
 from copy import deepcopy
+import numpy as np
+from scipy.spatial import ConvexHull
+from shapely.geometry import Polygon
 
 def evaluate_solution(tours,  data, truck_starts, cfg):
     # Check total time
@@ -37,6 +40,7 @@ def evaluate_solution(tours,  data, truck_starts, cfg):
     # print("Nodes: ", data["nodes"])
     full_tours_coords = [[(data["nodes"][node_idx].lat, data["nodes"][node_idx].lon) for node_idx in tour] for tour in full_tours]
     # print("full_tours coordinates:", full_tours_coords)
+    # raise NotImplementedError("Intersection percentage calculation is currently disabled for debugging. Re-enable once verified.")
 
     def intersect(A, B, C, D):
         def ccw(P1, P2, P3):
@@ -68,5 +72,39 @@ def evaluate_solution(tours,  data, truck_starts, cfg):
         pct_intersections = 0.0
     else:
         pct_intersections = total_intersections / total_checks
+
+
+
+    def get_separability_score(polygons_input):
+
+        # --- build valid polygons ---
+        polys = []
+        for pts in polygons_input:
+            if len(set(pts)) < 3:   # degenerate
+                continue
+
+            poly = Polygon(pts)
+            if poly.is_valid and poly.area > 0:
+                polys.append(poly)
+
+        if len(polys) < 2:
+            return 1.0
+
+        overlaps = []
+
+        # --- pairwise overlap ---
+        for i in range(len(polys)):
+            for j in range(i+1, len(polys)):
+                A, B = polys[i], polys[j]
+
+                inter_area = A.intersection(B).area
+                norm = min(A.area, B.area)
+
+                overlaps.append(inter_area / (norm + 1e-12))
+
+        return 1 - np.mean(overlaps)
+    
+    separability_score = get_separability_score(full_tours_coords)
+
                     
-    return total_destinations_visited, total_time, pct_intersections
+    return total_destinations_visited, total_time, pct_intersections, separability_score

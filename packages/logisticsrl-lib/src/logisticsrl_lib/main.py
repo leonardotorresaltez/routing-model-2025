@@ -84,7 +84,7 @@ def train():
             agent.store_reward(reward, is_terminal)
             episode_reward += reward
 
-        total_destinations_visited, total_time, pct_intersections = evaluate_solution(env.fleetStatus.all_tours(), data, truck_starts, cfg)                
+        total_destinations_visited, total_time, pct_intersections, separability_score = evaluate_solution(env.fleetStatus.all_tours(), data, truck_starts, cfg)                
         if total_destinations_visited > current_n_nodes + len(data['depots']):
             print("Current tours:", env.fleetStatus.all_tours())
             raise ValueError(f"Error: Visited more destinations ({total_destinations_visited}) than the current curriculum allows (max {current_n_nodes + len(data['depots'])}). Check the curriculum reset logic.")
@@ -93,19 +93,22 @@ def train():
             max_reward = episode_reward
             print(f"New max reward: {max_reward:.2f} at episode {episode}")
             report(episode, episode_reward, loss if 'loss' in locals() else 0.0, total_time, total_destinations_visited,
-                   pct_intersections, env, data, truck_starts, pbar, current_n_nodes, current_n_trucks)
+                   pct_intersections, separability_score, env, data, truck_starts, pbar, current_n_nodes, current_n_trucks)
 
-        if pct_intersections < 0.001 and env.noop_count < current_n_trucks: # If we have a perfect solution, advance the curriculum
+        if pct_intersections < 0.001 and separability_score > 1 - 1e-6 and env.noop_count < current_n_trucks: # If we have a perfect solution, advance the curriculum
             n_successes += 1
             if n_successes >= cfg.curriculum_learning_successes_required: # Require n successful episodes before advancing curriculum (to avoid flukes)
                 n_successes = 0
-                report(episode, episode_reward, loss if 'loss' in locals() else 0.0, total_time, total_destinations_visited,
-                       pct_intersections, env, data, truck_starts, pbar, current_n_nodes, current_n_trucks)
 
+                report(episode, episode_reward, loss if 'loss' in locals() else 0.0, total_time, total_destinations_visited,
+                       pct_intersections, separability_score, env, data, truck_starts, pbar, current_n_nodes, current_n_trucks)
+                
+                current_n_nodes, current_n_trucks = next(curriculum)
+                
                 print("-"*50)
                 print(f"Curriculum advanced! Now training on {current_n_nodes} nodes and {current_n_trucks} trucks.")
                 print("-"*50)
-                current_n_nodes, current_n_trucks = next(curriculum)
+                
         else:
             # n_successes = 0  # We want consecutive successes, so reset the count if we fail
             pass
@@ -144,6 +147,7 @@ def train():
                 "Total time": total_time,
                 "Total destinations visited": total_destinations_visited,
                 "Percentage of intersections": pct_intersections,
+                "Separability score": separability_score,
                 "Mean gradient norm": grad_norm if 'grad_norm' in locals() else 0.0,
                 "NO-OP count": env.noop_count,
                 "Explained variance": explained_var if 'explained_var' in locals() else 0.0,
@@ -160,7 +164,7 @@ def train():
 
 def report(
     episode, episode_reward, loss, total_time, total_destinations_visited,
-    pct_intersections, env, data, truck_starts, pbar, current_n_nodes, current_n_trucks
+    pct_intersections, separability_score, env, data, truck_starts, pbar, current_n_nodes, current_n_trucks
 ):
         print(
             f"Episode {episode:4d} | "
@@ -170,6 +174,7 @@ def report(
         print("Total time: ", total_time)
         print("Total destinations visited: ", total_destinations_visited)
         print("Percentage of intersections: ", pct_intersections)
+        print("Separability score: ", separability_score)
         pbar.write("\n--- Sample Route Plan ---")
 
         for i, truck_state in env.fleetStatus.trucklist.items():
