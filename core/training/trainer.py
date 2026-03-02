@@ -2,79 +2,79 @@ import torch
 from torch.distributions import Categorical
 
 class Trainer:
-    def __init__(self, env, ppo_agent, edge_index, cfg):
+    def __init__(self, env, agent, edge_index, cfg, episodes_per_batch=8):
         self.env = env
-        self.ppo = ppo_agent 
-        self.edge_index = edge_index.to(cfg.device)
+        self.agent = agent
+        self.edge_index = edge_index
         self.cfg = cfg
-        self.device = cfg.device
+        self.episodes_per_batch = episodes_per_batch
 
     def collect_rollout(self):
-        data = {
-            "states": [], "node_actions": [], 
-            "rewards": [], "masks": [], "log_probs": []
+        all_states, all_actions, all_log_probs = [], [], []
+        all_rewards, all_masks, all_node_masks = [], [], []
+
+        for _ in range(self.episodes_per_batch):
+            state, _ = self.env.reset()
+            done = False
+            truncated = False
+
+            while True:
+                # 1. Get the base mask from env (already visited in previous steps)
+                t_mask, base_n_mask = self.env.mask_actions()
+                state_tensor = state.clone().detach().unsqueeze(0).to(self.agent.device)
+
+                with torch.no_grad():
+                    _, node_logits, _ = self.agent.policy(state_tensor, self.edge_index)
+
+                # --- THE CRITICAL FIX: SEQUENTIAL SAMPLING ---
+                # We need to pick actions one-by-one to prevent intra-step collisions
+                actions_list = []
+                log_probs_list = []
+                # Working copy of the mask for this specific timestep
+                current_n_mask = base_n_mask.clone().to(self.agent.device)
+
+                for t in range(self.env.num_trucks):
+                    # Mask out nodes already visited OR nodes picked by previous trucks this turn
+                    truck_logits = node_logits[0, t].masked_fill(current_n_mask[t], -1e10)
+                    
+                    dist = Categorical(logits=truck_logits)
+                    sampled_action = dist.sample()
+                    
+                    actions_list.append(sampled_action)
+                    log_probs_list.append(dist.log_prob(sampled_action))
+
+                    # If this truck picked a customer, mask it for all OTHER trucks in this turn
+                    picked_node = sampled_action.item()
+                    if picked_node not in self.env.depot_indices.tolist():
+                        current_n_mask[:, picked_node] = True 
+
+                # Combine back into tensors
+                actions = torch.stack(actions_list).long() # [num_trucks]
+                log_prob = torch.stack(log_probs_list).sum().detach() # Global log_prob for this state
+                # ---------------------------------------------
+
+                next_state, reward, done, truncated, _ = self.env.step(actions.cpu().numpy())
+
+                # Store rollout data
+                all_states.append(state.clone().detach())
+                all_actions.append(actions.cpu())
+                all_log_probs.append(log_prob.cpu())
+                all_rewards.append(torch.tensor(reward, dtype=torch.float32))
+                all_masks.append(torch.tensor(0.0 if (done or truncated) else 1.0))
+                # Store the base_n_mask (what the model saw before taking actions)
+                all_node_masks.append(base_n_mask.clone().detach().bool())
+
+                state = next_state
+                if done or truncated:
+                    break
+
+        batch = {
+            "states": torch.stack(all_states),
+            "node_actions": torch.stack(all_actions),
+            "log_probs_old": torch.stack(all_log_probs),
+            "rewards": torch.stack(all_rewards),
+            "masks": torch.stack(all_masks),
+            "node_masks": torch.stack(all_node_masks),
+            "edge_index": self.edge_index,
         }
-        state, info = self.env.reset()
-        depot_indices = self.env.depot_indices.to(self.device)
-
-        for step in range(self.env.max_steps):
-            state_tensor = torch.FloatTensor(state).to(self.device) 
-            with torch.no_grad():
-                _, node_logits, _ = self.ppo.policy(state_tensor.unsqueeze(0), self.edge_index)
-            
-            node_logits = node_logits.squeeze(0) # [num_trucks, num_nodes]
-            _, n_mask = self.env.mask_actions()
-            n_mask = n_mask.to(self.device)
-            joint_action = torch.zeros(self.env.num_trucks, dtype=torch.long, device=self.device)
-            joint_log_probs = torch.zeros(self.env.num_trucks, device=self.device)
-            tick_visited_mask = torch.zeros(self.env.num_nodes, dtype=torch.bool, device=self.device)
-
-            for t_id in range(self.env.num_trucks):
-                t_logits = node_logits[t_id].clone()
-                t_logits[n_mask[t_id]] = -1e9
-                customer_mask = torch.ones(self.env.num_nodes, dtype=torch.bool, device=self.device)
-                customer_mask[depot_indices] = False
-                t_logits[tick_visited_mask & customer_mask] = -1e9
-                dist = Categorical(logits=t_logits)
-                action = dist.sample()
-                
-                joint_action[t_id] = action
-                joint_log_probs[t_id] = dist.log_prob(action)
-                if action not in depot_indices:
-                    tick_visited_mask[action] = True
-
-            next_state, reward, terminated, truncated, info = self.env.step(joint_action.cpu().numpy())
-            
-            data["states"].append(state_tensor.cpu())
-            data["node_actions"].append(joint_action.cpu()) 
-            data["rewards"].append(torch.tensor(reward, dtype=torch.float32))
-            data["log_probs"].append(joint_log_probs.sum().cpu()) 
-            data["masks"].append(torch.tensor(1.0 - float(terminated or truncated)))
-            
-            state = next_state
-            if terminated or truncated: break
-
-        return {
-            "states": torch.stack(data["states"]), 
-            "node_actions": torch.stack(data["node_actions"]), 
-            "rewards": torch.stack(data["rewards"]),
-            "masks": torch.stack(data["masks"]), 
-            "log_probs_old": torch.stack(data["log_probs"]), 
-            "edge_index": self.edge_index
-        }
-
-    def train(self):
-        print(f"Starting training on {self.device}...")
-        for episode in range(self.cfg.episodes):
-            batch = self.collect_rollout()
-            stats = self.ppo.update(batch)
-            ep_return = batch["rewards"].sum().item()
-            visited = self.env.visited_customers.sum().item()
-            if episode % 1 == 0:
-                print(
-                    f"Ep {episode:03d} | "
-                    f"Return: {ep_return:7.2f} | "
-                    f"Visited: {int(visited):02d} | "
-                    f"Loss: {stats['loss']:.4f} | "
-                    f"Entropy: {stats.get('entropy', 0):.3f}"
-                )
+        return batch

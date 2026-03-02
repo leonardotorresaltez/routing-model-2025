@@ -8,45 +8,59 @@ class Config:
     run_name: str = "default"
     seed: int = 42
     device: str = "cpu"
-    wandb: bool = True
-    data_dir: str = "data_version_1" 
+    wandb: bool = True  # Toggle W&B logging
+    data_dir: str = "data_version_2"  # data path
+    debug = False
     
+    # --- Model ---
     embed_dim: int = 128
-    max_daily_delivery_time_each_truck: int = 24
-
-    lr: float = 5e-5
-    episodes: int = 500
+    max_daily_delivery_time_each_truck: int = 24  # hours
+    
+    # --- Training ---
+    lr: float = 1e-3
+    episodes: int = 500 if not debug else 2
     log_interval: int = 20
+    beta: float = 0.99  # Moving average baseline factor for reward normalization. Less beta means faster adaptation to recent rewards, more beta means more stability.
+    gamma: float = 0.95  # Discount factor for rewards
+
+    entropy_bonus: float = 0.01  # Coefficient for entropy bonus to encourage exploration
     
     def __post_init__(self):
-        # Now self.data_dir exists and can be checked
-        if self.data_dir == "data_version_1":
+        if self.data_dir == "data_version_2":
             self.max_daily_delivery_time_each_truck = 24
+            
         else:
             self.max_daily_delivery_time_each_truck = 12
         
+        # Construct project_name
         self.project_name = f"{self.project_name}_{self.data_dir}"
-        self.run_name = f"lr{self.lr}_sd{self.seed}"
+        # Construct Run Name
+        self.run_name = f"lr{self.lr}_gamma{self.gamma}_sd{self.seed}"
 
 def parse_args() -> Config:
-        parser = argparse.ArgumentParser()
+    base_cfg = Config()
+    parser = argparse.ArgumentParser()
+    
+    parser.add_argument("--lr", type=float, default=base_cfg.lr)
+    parser.add_argument("--episodes", type=int, default=base_cfg.episodes)
+    parser.add_argument("--embed_dim", type=int, default=base_cfg.embed_dim)
+    parser.add_argument("--seed", type=int, default=base_cfg.seed)
+    parser.add_argument("--device", type=str, default=base_cfg.device)
+    parser.add_argument("--data_dir", type=str, default=base_cfg.data_dir)
+    parser.add_argument("--max_daily_delivery_time_for_each_truck", type=int, default=base_cfg.max_daily_delivery_time_each_truck)
+    
+    # Flag: --no-wandb to disable logging
+    parser.add_argument("--no-wandb", action="store_true", help="Disable W&B")
 
-        parser.add_argument("--lr", type=float, default=5e-5)
-        parser.add_argument("--episodes", type=int, default=500)
-        parser.add_argument("--embed_dim", type=int, default=128)
-        parser.add_argument("--seed", type=int, default=42)
-        parser.add_argument("--device", type=str, default="cpu")
-        parser.add_argument("--data_dir", type=str, default="data_version_1")
-        parser.add_argument("--no-wandb", action="store_true", help="Disable W&B")
+    args = parser.parse_args()
 
-        args = parser.parse_args()
-
-        return Config(
-            lr=args.lr,
-            episodes=args.episodes,
-            embed_dim=args.embed_dim,
-            seed=args.seed,
-            device=args.device,
-            wandb=not args.no_wandb,
-            data_dir=args.data_dir
-        )
+    
+    return Config(
+        lr=args.lr,
+        episodes=args.episodes,
+        embed_dim=args.embed_dim,
+        seed=args.seed,
+        device=args.device,
+        wandb=not args.no_wandb,
+        data_dir=args.data_dir
+    )

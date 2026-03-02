@@ -1,152 +1,193 @@
-import torch
 import gymnasium as gym
 import numpy as np
+import torch
+
+
 class MDVRPGymEnv(gym.Env):
-    def __init__(self, data, max_steps=400, max_daily_time=24.0):
+
+    metadata = {"render_modes": []}
+
+    def __init__(self, data, max_steps=200, max_daily_time=24.0):
         super().__init__()
+
         self.data = data
         self.max_steps = max_steps
         self.max_daily_time = max_daily_time
-        self.trucks = data["trucks"] 
+
+        # Core problem data
+        self.trucks = data["trucks"]
         self.num_trucks = len(self.trucks)
         self.num_nodes = data["num_nodes"]
-        self.truck_starts = [t.depot_idx for t in self.trucks]
-        self.depot_indices = torch.tensor(data["depot_indices"])
-        self.cluster_ids = self.data["cluster_ids"] 
-        #Observation Space
+
+        self.time_matrix = data["time_matrix"].float()
+        self.truck_starts = torch.tensor([t.depot_idx for t in self.trucks])
+        self.depot_indices = torch.tensor(data.get("depot_indices", [0]))
+
+        if len(self.depot_indices) == 0:
+            self.depot_indices = torch.tensor([0])
+
+        # Customers = all non-depot nodes
+        self.customer_mask = torch.ones(self.num_nodes, dtype=torch.bool)
+        self.customer_mask[self.depot_indices] = False
+        self.total_customers = int(self.customer_mask.sum())
+
+        # Observation space: node features (you already have this)
+        self.feat_dim = data["node_features"].shape[1]
         self.observation_space = gym.spaces.Box(
-            low=-np.inf, 
-            high=np.inf, 
-            shape=(self.num_nodes, 5), 
-            dtype=np.float32
+            low=-np.inf,
+            high=np.inf,
+            shape=(self.num_nodes, self.feat_dim),
+            dtype=np.float32,
         )
-        #Action Space
+
+        # Action space: one node per truck
         self.action_space = gym.spaces.MultiDiscrete(
             [self.num_nodes] * self.num_trucks
         )
-        
+
+        # --- Reward scaling based on time matrix ---
+        tm = self.time_matrix
+        mask = tm > 0
+        self.time_mean = tm[mask].mean().item()
+        self.time_std = tm[mask].std().item() if tm[mask].numel() > 1 else 1.0
+
+        # Reward coefficients (tune these)
+        self.r_visit = 2.0          # reward for visiting a new customer
+        self.r_collision = -2.0     # penalty for trying to visit an already served / collided node
+        self.r_unvisited = -5.0     # penalty per unvisited customer at the end
+        self.r_finish_bonus = 5.0   # bonus for serving all customers
+        self.r_time_scale = 0.5     # weight for travel-time penalty
+
+        self.reset()
+
+    # ------------------------------------------------------------------ #
+    # Core API
+    # ------------------------------------------------------------------ #
+
     def reset(self, seed=None, options=None):
         super().reset(seed=seed)
-        self.truck_positions = self.truck_starts.copy()
+
+        self.truck_positions = self.truck_starts.clone().tolist()
         self.truck_times = [0.0] * self.num_trucks
-        self.visited_customers = torch.zeros(self.num_nodes)
-        self._tours = [[s] for s in self.truck_starts]
+        self.visited_customers = torch.zeros(self.num_nodes, dtype=torch.float32)
+        self._tours = [[p] for p in self.truck_positions]
         self.current_step = 0
-        return self.get_state(), {}
+
+        obs = self.get_state()
+        return obs, {}
 
     def get_state(self):
         state = self.data["node_features"].clone()
-        state[:, 3] = self.visited_customers
+        # Assume column 3 is "visited" flag
+        if state.shape[1] > 3:
+            state[:, 3] = self.visited_customers
         return state
 
     def step(self, actions):
+        """
+        actions: tensor/list of length num_trucks
+        """
         total_reward = 0.0
-        tick_claims = {}
+        visited_this_step = set()
 
-        for t_id in range(self.num_trucks):
-            next_node = int(actions[t_id])
-            curr_node = self.truck_positions[t_id]
-            home = self.truck_starts[t_id]
-            truck_obj = self.trucks[t_id]
-          
-            # 1. Skip trucks that are already back home and finished
-            if curr_node == home and len(self._tours[t_id]) > 1:
+        for t in range(self.num_trucks):
+            next_node = int(actions[t])
+            curr = int(self.truck_positions[t])
+            home = int(self.truck_starts[t])
+            is_depot = next_node in self.depot_indices.tolist()
+
+            # --- Collision / double-visit prevention ---
+            if not is_depot and (
+                self.visited_customers[next_node] == 1
+                or next_node in visited_this_step
+            ):
+                # Truck "wastes" its decision
+                total_reward += self.r_collision
                 continue
 
-            # 2. PHYSICAL FEASIBILITY CHECK (The 24h Guard)
-            # Calculate time to reach next node + time to get back home from there
-            t_to_next = float(self.data["time_matrix"][curr_node, next_node])
-            t_from_next_to_home = float(self.data["time_matrix"][next_node, home])
-            
-            # If proposed move violates 24h limit, force them home instead
-            if self.truck_times[t_id] + t_to_next + t_from_next_to_home > self.max_daily_time:
-                if curr_node != home:
-                    next_node = home
-                    time_cost = float(self.data["time_matrix"][curr_node, home])
-                else:
-                    # Already home, just stay there
-                    continue 
-            else:
-                time_cost = t_to_next
+            # Travel
+            t_to_next = float(self.time_matrix[curr, next_node])
+            self.truck_times[t] += t_to_next
+            self.truck_positions[t] = next_node
+            self._tours[t].append(next_node)
 
-            # 3. Update Truck State
-            self.truck_times[t_id] += time_cost
-            self.truck_positions[t_id] = next_node
-            self._tours[t_id].append(next_node)
+            # Reward for visiting a new customer
+            if not is_depot and self.visited_customers[next_node] == 0:
+                self.visited_customers[next_node] = 1
+                visited_this_step.add(next_node)
+                total_reward += self.r_visit
 
-            # 4. Reward Logic
-            is_depot = next_node in self.depot_indices
-            if not is_depot:
-                if self.visited_customers[next_node] == 0:
-                    self.visited_customers[next_node] = 1.0
-                    delivery_reward = 500.0
-                    dist_from_depot = float(self.data["time_matrix"][home, next_node])
-                    delivery_reward += (dist_from_depot * 5.0)
-                    
-                    if int(self.cluster_ids[next_node]) == truck_obj.target_cluster:
-                        delivery_reward += 50.0
-                    total_reward += delivery_reward
-                else:
-                    total_reward -= 100.0 # Re-visit penalty
-                
-                if next_node in tick_claims:
-                    total_reward -= 50.0 # Collision penalty
-                tick_claims[next_node] = t_id
-            
-            # Efficiency Penalty
-            total_reward -= 0.1 * time_cost
+            # Time / distance penalty (normalized-ish)
+            # Larger travel times => more negative
+            norm_time = (t_to_next - self.time_mean) / (self.time_std + 1e-6)
+            total_reward -= self.r_time_scale * norm_time
 
         self.current_step += 1
-        
-        # 5. Termination check
-        total_customers = self.num_nodes - len(self.depot_indices)
-        all_visited = self.visited_customers.sum() >= total_customers
-        all_home = all([self.truck_positions[i] == self.truck_starts[i] and len(self._tours[i]) > 1 
-                        for i in range(self.num_trucks)])
-        
-        terminated = bool(all_visited or all_home)
-        truncated = bool(self.current_step >= self.max_steps)
-        
-        if all_visited:
-            total_reward += 4000.0 
 
-        return self.get_state(), float(total_reward), terminated, truncated, {}
+        # --- Termination logic ---
+        num_visited = int(self.visited_customers[self.customer_mask].sum())
+        all_delivered = (num_visited >= self.total_customers)
+
+        terminated = bool(all_delivered)
+        truncated = self.current_step >= self.max_steps
+
+        # --- Final rewards at episode end ---
+        if terminated:
+            # Bonus for completing all deliveries
+            total_reward += self.r_finish_bonus
+
+            # Mild efficiency shaping: penalize excessive total fleet time
+            total_fleet_time = sum(self.truck_times)
+            expected_time = self.time_mean * self.total_customers
+            norm_fleet = (total_fleet_time - expected_time) / (self.time_std + 1e-6)
+            total_reward -= 0.1 * norm_fleet
+
+        elif truncated:
+            # Penalize remaining unvisited customers
+            unvisited = self.total_customers - num_visited
+            total_reward += self.r_unvisited * unvisited
+
+        obs = self.get_state()
+        return obs, float(total_reward), terminated, truncated, {}
+
+    # ------------------------------------------------------------------ #
+    # Action masking
+    # ------------------------------------------------------------------ #
 
     def mask_actions(self):
+        """
+        Returns:
+            t_mask: (num_trucks,) bool tensor (not really used here, kept for compatibility)
+            n_mask: (num_trucks, num_nodes) bool tensor, True = action not allowed
+        """
         n_mask = torch.zeros((self.num_trucks, self.num_nodes), dtype=torch.bool)
         t_mask = torch.zeros(self.num_trucks, dtype=torch.bool)
-        
-        for i in range(self.num_trucks):
-            home = self.truck_starts[i]
-            curr_pos = self.truck_positions[i]
-            curr_time = self.truck_times[i]
-            if curr_pos == home and len(self._tours[i]) > 1:
-                n_mask[i, :] = True
-                n_mask[i, home] = False
-                t_mask[i] = True
-                continue
-            n_mask[i, self.visited_customers == 1] = True
-            n_mask[i, curr_pos] = True
 
-            for n in range(self.num_nodes):
-                if n_mask[i, n] or n == home:
-                    continue
-                
-                t_to = float(self.data["time_matrix"][curr_pos, n])
-                t_back = float(self.data["time_matrix"][n, home])
-                
-                if curr_time + t_to + t_back > self.max_daily_time:
-                    n_mask[i, n] = True
+        for t in range(self.num_trucks):
+            curr = int(self.truck_positions[t])
+            home = int(self.truck_starts[t])
 
-            reachable = (~n_mask[i]).clone()
-            reachable[self.depot_indices] = False
-            
-            if not reachable.any():
-                n_mask[i, :] = True
-                n_mask[i, home] = False 
-                t_mask[i] = True 
-                
+            # 1. Mask already visited customers
+            n_mask[t, self.visited_customers == 1] = True
+
+            # 2. Time feasibility: must be able to go to node and back to home within max_daily_time
+            t_to_all = self.time_matrix[curr]          # (num_nodes,)
+            t_back_all = self.time_matrix[:, home]     # (num_nodes,)
+            predicted_arrival = self.truck_times[t] + t_to_all + t_back_all
+            n_mask[t, predicted_arrival > self.max_daily_time] = True
+
+            # 3. Always allow depots as safe options
+            n_mask[t, self.depot_indices] = False
+
+            # 4. No self-loop on customers (can stay at depot if you want)
+            if curr not in self.depot_indices.tolist():
+                n_mask[t, curr] = True
+
         return t_mask, n_mask
+
+    # ------------------------------------------------------------------ #
+    # Tours property
+    # ------------------------------------------------------------------ #
 
     @property
     def tours(self):
