@@ -151,14 +151,14 @@ class GraphPointerPolicy_old(nn.Module):
 class FactorizedFleetPolicy(nn.Module):
     #_SUM_OTHER_DIM = 2
     
-    def __init__(self, cfg, embed_dim=128):
+    def __init__(self, cfg, embed_dim=128,input_features_size=10):
         super().__init__()
         self.cfg = cfg
 
         self.embed_dim = embed_dim
         # Feature embedding — initialized at construction so the optimizer tracks it
-        #self.features = nn.Linear(input_features_size, embed_dim)
-        self.features = None
+        self.features = nn.Linear(input_features_size, embed_dim)
+        # self.features = None
         # Simple graph message passing (1 step)
         self.msg_linear = nn.Linear(embed_dim, embed_dim)
 
@@ -186,9 +186,9 @@ class FactorizedFleetPolicy(nn.Module):
         """
         
         # Dynamically initialize self.features if it is None
-        if self.features is None:
-            input_features_size = observation_space_as_features.size(1)  # number of nodes dynamically
-            self.features = nn.Linear(input_features_size, self.embed_dim)        
+        #if self.features is None:
+        #    input_features_size = observation_space_as_features.size(1)  # number of nodes dynamically
+        #    self.features = nn.Linear(input_features_size, self.embed_dim)        
 
         h = self.features(observation_space_as_features)           # [N, D]
         truck_h = h[truck_positions] 

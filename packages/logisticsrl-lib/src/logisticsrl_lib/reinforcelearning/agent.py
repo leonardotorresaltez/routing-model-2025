@@ -18,7 +18,7 @@ class REINFORCEAgent:
         self.cfg = cfg
  
         
-        self.policy = FactorizedFleetPolicy(embed_dim=cfg.embed_dim, cfg=cfg)
+        self.policy = FactorizedFleetPolicy(embed_dim=cfg.embed_dim, cfg=cfg, input_features_size=10)
         self.policy.to(cfg.device)
         self.optimizer = optim.Adam(self.policy.parameters(), lr=cfg.lr)
         
