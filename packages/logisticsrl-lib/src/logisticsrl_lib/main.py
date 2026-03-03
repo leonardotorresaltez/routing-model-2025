@@ -69,9 +69,11 @@ def train():
         while not (done or terminated):
             action = agent.act(obs)
             if cfg.debug: print(f"DEBUG: Selected action: {action}")
-            obs, reward, done, terminated, _ = env.step(action)            
+            obs, reward, done, terminated, info = env.step(action)
             agent.store_reward(reward)
             episode_reward += reward
+            if done or terminated:
+                agent.store_terminal_bonus(info.get("terminal_bonus", 0.0))
 
         # Check constraints 
         total_destinations_visited, total_time, pct_intersections = evaluate_solution(env.fleetStatus.all_tours(), data, truck_starts, cfg)                

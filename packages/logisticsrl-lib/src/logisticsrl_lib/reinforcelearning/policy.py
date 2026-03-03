@@ -149,14 +149,15 @@ class GraphPointerPolicy_old(nn.Module):
 # FactorizedFleetPolicy Policy Model
 # ----------------------------    
 class FactorizedFleetPolicy(nn.Module):
-    _SUM_OTHER_DIM = 2
+    #_SUM_OTHER_DIM = 2
     
     def __init__(self, cfg, embed_dim=128):
         super().__init__()
         self.cfg = cfg
 
-        self.embed_dim = embed_dim  
-        #  embedding
+        self.embed_dim = embed_dim
+        # Feature embedding — initialized at construction so the optimizer tracks it
+        #self.features = nn.Linear(input_features_size, embed_dim)
         self.features = None
         # Simple graph message passing (1 step)
         self.msg_linear = nn.Linear(embed_dim, embed_dim)
@@ -167,7 +168,14 @@ class FactorizedFleetPolicy(nn.Module):
         
         # truck selector pointer mechanism
         self.truck_query = nn.Linear(embed_dim, embed_dim)
-        self.truck_key = nn.Linear(embed_dim, embed_dim)        
+        self.truck_key = nn.Linear(embed_dim, embed_dim)
+
+        # critic: value head V(s)
+        self.value_head = nn.Sequential(
+            nn.Linear(embed_dim, embed_dim),
+            nn.ReLU(),
+            nn.Linear(embed_dim, 1)
+        )        
 
     def forward(self, observation_space_as_features: torch.Tensor, truck_positions: np.array, visited_mask: torch.Tensor, inactive_trucks_mask: torch.Tensor):
         """
@@ -176,11 +184,11 @@ class FactorizedFleetPolicy(nn.Module):
         visited_mask: [T, N] bool  (True = forbidden)
         inactive_trucks_mask: [T] bool (True = inactive)
         """
-
+        
         # Dynamically initialize self.features if it is None
         if self.features is None:
-            size_dim = size_dim = observation_space_as_features.size(1)  # number of nodes dynamically
-            self.features = nn.Linear(size_dim, self.embed_dim)
+            input_features_size = observation_space_as_features.size(1)  # number of nodes dynamically
+            self.features = nn.Linear(input_features_size, self.embed_dim)        
 
         h = self.features(observation_space_as_features)           # [N, D]
         truck_h = h[truck_positions] 
@@ -205,5 +213,8 @@ class FactorizedFleetPolicy(nn.Module):
         node_probs = F.softmax(node_scores, dim=-1)  # Corrected dimension for softmax to apply along the last axis     
  
         
+        # critic: V(s) from graph context
+        value = self.value_head(graph_ctx).squeeze(-1)  # scalar
+
         if self.cfg.debug: print(f"DEBUG: Action probabilities shape: {node_probs.cpu().detach().numpy().shape} | Sum: {node_probs.sum().item():.4f}")
-        return truck_probs, node_probs
+        return truck_probs, node_probs, value
