@@ -26,20 +26,28 @@ class NormalizedRewards:
             return self.global_mean / self.global_std
         
     def getRewardNonOP(self):
-        base_reward = (13.77 - (-self.global_mean)) / self.global_std # aprox 0.87
         if (self.cfg.data_dir == "data_version_2" ):
-            return - 1.5  # reduced from -3.0: trucks can now retire when remaining visits are inefficient
-        if (self.cfg.data_dir == "data_version_1" ):    
-            return - 2.5
+            return -1.5   # trucks can retire when remaining visits are inefficient
+        if (self.cfg.data_dir == "data_version_1" ):
+            # With 12h limit, trucks are often FORCED to NO-OP (masked nodes).
+            # Low penalty avoids punishing unavoidable retirements and allows
+            # the policy to skip very distant nodes (trip > 1.22 std above mean).
+            return -0.5
         else:
             return -self.global_mean
-        
+
     def getRewardTotalFleetTime(self, total_fleet_time):
-        # Linear penalty, 3x stronger than the original /86.5 version.
-        # At 1000h: -17.2  →  redistributed to all steps ≈ 26% of mean return (~65).
-        # At  750h:  -8.6  →  ≈ 13% weight.  At 500h: 0.
-        efficiency_reward = -(total_fleet_time - 500) / 29.0
-        return float(np.clip(efficiency_reward, -20.0, 5.0))
+        if (self.cfg.data_dir == "data_version_2"):
+            # Linear: 3x stronger than original /86.5. At 1000h: -17.2 (~26% of mean return).
+            efficiency_reward = -(total_fleet_time - 500) / 29.0
+            return float(np.clip(efficiency_reward, -20.0, 5.0))
+        else:
+            # data_version_1: 5 trucks × 12h max = 60h capacity. User target: <35h.
+            # Divisor 2.5 (2x stronger than before):
+            # At 52h: -6.8  |  At 35h: 0  |  At 25h: +4
+            # At 52h terminal ≈ -6.8 - coverage = ~-9.6 vs mean returns ~10 → 96% swing.
+            efficiency_reward = -(total_fleet_time - 35) / 2.5
+            return float(np.clip(efficiency_reward, -15.0, 5.0))
             
 
     def getRewardCoverage(self, n_unvisited):

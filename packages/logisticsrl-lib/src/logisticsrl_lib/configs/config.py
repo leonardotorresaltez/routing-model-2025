@@ -9,7 +9,7 @@ class Config:
     seed: int = 42
     device: str = "cpu"
     wandb: bool = False  # Toggle W&B logging
-    data_dir: str = "data_version_2"  # data path
+    data_dir: str = "data_version_1"  # data path
     debug = False
     
     # --- Model ---
@@ -29,9 +29,12 @@ class Config:
     def __post_init__(self):
         if self.data_dir == "data_version_2":
             self.max_daily_delivery_time_each_truck = 24
-            
         else:
             self.max_daily_delivery_time_each_truck = 12
+            # data_version_1: heavy action masking (12h limit) forces near-deterministic
+            # choices → entropy collapses → gradient → 0 → training freezes.
+            # 0.1 prevents collapse without the instability that 0.2 caused.
+            self.entropy_bonus = 0.1
         
         # Construct project_name
         self.project_name = f"{self.project_name}_{self.data_dir}"

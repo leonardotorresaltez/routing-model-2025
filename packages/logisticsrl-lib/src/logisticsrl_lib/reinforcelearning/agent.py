@@ -18,7 +18,7 @@ class REINFORCEAgent:
         self.cfg = cfg
  
         
-        self.policy = FactorizedFleetPolicy(embed_dim=cfg.embed_dim, cfg=cfg)
+        self.policy = FactorizedFleetPolicy(cfg=cfg, input_features_size=10, embed_dim=cfg.embed_dim)
         self.policy.to(cfg.device)
         self.optimizer = optim.Adam(self.policy.parameters(), lr=cfg.lr)
         
@@ -43,11 +43,16 @@ class REINFORCEAgent:
         inactive_trucks_mask = torch.tensor(obs["inactive_trucks_mask"], dtype=torch.bool).to(self.cfg.device)
         
         
+        truck_times = torch.tensor(
+            obs["truck_times"], dtype=torch.float32, device=self.cfg.device
+        ) / self.cfg.max_daily_delivery_time_each_truck  # normalized [0, 1]
+
         truck, node = self._select_action(
-            observation_space_as_features,  
-            obs["truck_positions"], 
+            observation_space_as_features,
+            obs["truck_positions"],
             visited_enriched_tensor,
-            inactive_trucks_mask)
+            inactive_trucks_mask,
+            truck_times)
         
 
 
@@ -154,10 +159,11 @@ class REINFORCEAgent:
         inactive_mask = torch.tensor(obs["inactive_trucks_mask"], dtype=torch.float32, device=device)
         truck_times = torch.tensor(obs["truck_times"], dtype=torch.float32, device=device)
         
+        t_max = self.cfg.max_daily_delivery_time_each_truck
         active_ratio = (1.0 - inactive_mask).mean().reshape(1, 1)
-        avg_fleet_time = truck_times.mean().reshape(1, 1)
-        max_fleet_time = truck_times.max().reshape(1, 1)
-        
+        avg_fleet_time = (truck_times.mean() / t_max).reshape(1, 1)
+        max_fleet_time = (truck_times.max() / t_max).reshape(1, 1)
+
         fleet_stats = torch.cat([active_ratio, avg_fleet_time, max_fleet_time], dim=1).repeat(num_nodes, 1)
 
         # 4. Depot / Home Information
@@ -173,6 +179,7 @@ class REINFORCEAgent:
         depot_indices = list(set(truck_starts))
         dist_to_depots = time_matrix[:, depot_indices]
         min_dist_to_depot, _ = torch.min(dist_to_depots, dim=1, keepdim=True)
+        min_dist_to_depot = min_dist_to_depot / t_max  # [0, 1]
 
         # 5. Min distance from any active truck to each node - Shape: [N, 1]
         truck_positions = obs["truck_positions"]
@@ -183,7 +190,7 @@ class REINFORCEAgent:
         if active_truck_positions:
             truck_dists = time_matrix[active_truck_positions, :]  # [active_T, N]
             min_dist_from_trucks, _ = torch.min(truck_dists, dim=0, keepdim=True)
-            min_dist_from_trucks = min_dist_from_trucks.T  # [N, 1]
+            min_dist_from_trucks = min_dist_from_trucks.T / t_max  # [N, 1], [0, 1]
         else:
             min_dist_from_trucks = torch.zeros(num_nodes, 1, device=device)
 
@@ -260,13 +267,13 @@ class REINFORCEAgent:
      
                 
         
-    def _select_action(self, nodes, truck_positions, visited_enriched, inactive_trucks_mask):
+    def _select_action(self, nodes, truck_positions, visited_enriched, inactive_trucks_mask, truck_times=None):
         """
         Helper to select the next action or return NO-OP if all nodes are visited.
         """
 
         # Pass the mask to the policy
-        truck_probs, node_probs, value = self.policy(nodes, truck_positions, visited_enriched, inactive_trucks_mask)
+        truck_probs, node_probs, value = self.policy(nodes, truck_positions, visited_enriched, inactive_trucks_mask, truck_times)
         self.values.append(value)
         
         # ---- sample truck ----

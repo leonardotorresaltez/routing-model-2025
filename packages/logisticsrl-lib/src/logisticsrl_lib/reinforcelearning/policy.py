@@ -151,24 +151,28 @@ class GraphPointerPolicy_old(nn.Module):
 class FactorizedFleetPolicy(nn.Module):
     #_SUM_OTHER_DIM = 2
     
-    def __init__(self, cfg, embed_dim=128):
+    def __init__(self, cfg, input_features_size=10, embed_dim=128):
         super().__init__()
         self.cfg = cfg
 
         self.embed_dim = embed_dim
         # Feature embedding — initialized at construction so the optimizer tracks it
-        #self.features = nn.Linear(input_features_size, embed_dim)
-        self.features = None
+        self.features = nn.Linear(input_features_size, embed_dim)
+        #self.features = None
         # Simple graph message passing (1 step)
         self.msg_linear = nn.Linear(embed_dim, embed_dim)
 
         # node selector pointer mechanism
         self.query = nn.Linear(embed_dim, embed_dim)
         self.key = nn.Linear(embed_dim, embed_dim)
-        
+
         # truck selector pointer mechanism
         self.truck_query = nn.Linear(embed_dim, embed_dim)
         self.truck_key = nn.Linear(embed_dim, embed_dim)
+
+        # per-truck time projection: injects normalized elapsed time into truck embedding
+        # so trucks at same position are distinguishable when their remaining time differs
+        self.time_proj = nn.Linear(1, embed_dim)
 
         # critic: value head V(s)
         self.value_head = nn.Sequential(
@@ -177,21 +181,27 @@ class FactorizedFleetPolicy(nn.Module):
             nn.Linear(embed_dim, 1)
         )        
 
-    def forward(self, observation_space_as_features: torch.Tensor, truck_positions: np.array, visited_mask: torch.Tensor, inactive_trucks_mask: torch.Tensor):
+    def forward(self, observation_space_as_features: torch.Tensor, truck_positions: np.array, visited_mask: torch.Tensor, inactive_trucks_mask: torch.Tensor, truck_times: torch.Tensor = None):
         """
         observation_space_as_features: [N, size_dim]
         truck_positions: np.array
         visited_mask: [T, N] bool  (True = forbidden)
         inactive_trucks_mask: [T] bool (True = inactive)
+        truck_times: [T] float, normalized elapsed time per truck in [0, 1]
         """
-        
+
         # Dynamically initialize self.features if it is None
-        if self.features is None:
-            input_features_size = observation_space_as_features.size(1)  # number of nodes dynamically
-            self.features = nn.Linear(input_features_size, self.embed_dim)        
+        #if self.features is None:
+        #    input_features_size = observation_space_as_features.size(1)  # number of nodes dynamically
+        #    self.features = nn.Linear(input_features_size, self.embed_dim)
 
         h = self.features(observation_space_as_features)           # [N, D]
-        truck_h = h[truck_positions] 
+        truck_h = h[truck_positions]                               # [T, D]
+
+        # Inject per-truck elapsed time so trucks at the same depot are distinguishable.
+        # time_proj maps scalar elapsed_time → [D], added to each truck's position embedding.
+        if truck_times is not None:
+            truck_h = truck_h + self.time_proj(truck_times.unsqueeze(1))  # [T, D]
 
         visited_mask = visited_mask.bool()
         graph_ctx = self.msg_linear(h.mean(0))  # [D]
