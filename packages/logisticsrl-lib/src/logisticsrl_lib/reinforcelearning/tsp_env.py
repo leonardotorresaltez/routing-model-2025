@@ -137,9 +137,15 @@ class TSPEnv(gym.Env):
         if self.num_steps >= self.num_nodes + self.cfg.max_extra_steps:
             terminated = True
                             
+        terminal_bonus = 0.0
         if done or terminated:
-            reward += self.normalized_rewards.getRewardTotalFleetTime(self.fleetStatus.total_fleet_time())
-            
-        return self._get_obs(), reward, done, terminated, {}
+            fleet_time_reward = self.normalized_rewards.getRewardTotalFleetTime(self.fleetStatus.total_fleet_time())
+            n_unvisited = int((self.visited_targets[self.target_mask] == 0).sum())
+            coverage_reward = self.normalized_rewards.getRewardCoverage(n_unvisited)
+            terminal_bonus = fleet_time_reward + coverage_reward
+            # terminal_bonus is NOT added to reward here — passed via info so
+            # the agent can add it to ALL steps (undiscounted), bypassing gamma^492 attenuation.
+
+        return self._get_obs(), reward, done, terminated, {"terminal_bonus": terminal_bonus}
 
 
