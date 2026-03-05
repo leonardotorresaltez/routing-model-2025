@@ -16,12 +16,12 @@ dependencies = [
 
 
 [tool.poetry]
-# Esto permite que Poetry encuentre los códigos fuente
 packages = [
-    { include = "common-lib", from = "packages" },
-    { include = "loader-lib", from = "packages" },
-    { include = "logisticsrl-lib", from = "packages" }
+    { include = "common_lib", from = "packages/common-lib/src" },
+    { include = "loader_lib", from = "packages/loader-lib/src" },
+    { include = "logisticsrl_lib", from = "packages/logisticsrl-lib/src" }
 ]
+
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.0.0"

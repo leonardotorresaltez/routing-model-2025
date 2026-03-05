@@ -42,12 +42,13 @@ class REINFORCEAgent:
         # masking: inactive trucks   
         inactive_trucks_mask = torch.tensor(obs["inactive_trucks_mask"], dtype=torch.bool).to(self.cfg.device)
         
-        
+        coords = torch.tensor(obs["nodes"], dtype=torch.float32, device=self.cfg.device)
         truck, node = self._select_action(
             observation_space_as_features,  
             obs["truck_positions"], 
             visited_enriched_tensor,
-            inactive_trucks_mask)
+            inactive_trucks_mask,
+            coords)
         
 
 
@@ -120,7 +121,7 @@ class REINFORCEAgent:
 
         self.optimizer.zero_grad()
         loss.backward()
-        grad_norm = torch.nn.utils.clip_grad_norm_(self.policy.parameters(), max_norm=1.0)
+        grad_norm = torch.nn.utils.clip_grad_norm_(self.policy.parameters(), max_norm=0.5)
         self.optimizer.step()
 
         # Clear buffers
@@ -260,13 +261,13 @@ class REINFORCEAgent:
      
                 
         
-    def _select_action(self, nodes, truck_positions, visited_enriched, inactive_trucks_mask):
+    def _select_action(self, nodes, truck_positions, visited_enriched, inactive_trucks_mask, coords):
         """
         Helper to select the next action or return NO-OP if all nodes are visited.
         """
 
         # Pass the mask to the policy
-        truck_probs, node_probs, value = self.policy(nodes, truck_positions, visited_enriched, inactive_trucks_mask)
+        truck_probs, node_probs, value = self.policy(nodes, truck_positions, visited_enriched, inactive_trucks_mask,coords)
         self.values.append(value)
         
         # ---- sample truck ----

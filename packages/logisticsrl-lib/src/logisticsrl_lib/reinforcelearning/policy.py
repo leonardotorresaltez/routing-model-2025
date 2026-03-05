@@ -151,11 +151,12 @@ class GraphPointerPolicy_old(nn.Module):
 class FactorizedFleetPolicy(nn.Module):
     #_SUM_OTHER_DIM = 2
     
-    def __init__(self, cfg, embed_dim=128,input_features_size=10):
+    def __init__(self, cfg, embed_dim=128,input_features_size=10,knn_k=10):
         super().__init__()
         self.cfg = cfg
 
         self.embed_dim = embed_dim
+        self.knn_k =knn_k
         # Feature embedding — initialized at construction so the optimizer tracks it
         self.features = nn.Linear(input_features_size, embed_dim)
         # self.features = None
@@ -176,8 +177,58 @@ class FactorizedFleetPolicy(nn.Module):
             nn.ReLU(),
             nn.Linear(embed_dim, 1)
         )        
+    # ----------------------------
+    # KNN Graph Builder
+    # ----------------------------    
+    def build_edge_index(self,coords):
+        device = coords.device
+        k = self.knn_k
+        
+        num_nodes = coords.shape[0]
+        
+        #Pairwise distance
+        dist = torch.cdist(coords,coords)
+        
+        #K nearest neighbours(skipping itself)
+        knn =dist.topk(k+1,largest=False).indices[:,1:]
+        
+        #Directed edges source->destination
+        src = torch.arange(num_nodes,device=device).unsqueeze(1).repeat(1,k).reshape(-1)
+        dst = knn.reshape(-1)
+        
+        edge_index = torch.stack([src,dst],dim =0)
+        
+        #Now reverse edges destination->src
+        edge_index_rev = edge_index.flip(0)
+        edge_index = torch.cat([edge_index,edge_index_rev],dim=1)
+        
+        #Add self loops
+        self_loops = torch.arange(num_nodes,device=device)
+        self_loops = torch.stack([self_loops,self_loops],dim=0)
+        edge_index = torch.cat([edge_index,self_loops],dim=1)
+        
+        return edge_index
+    # ----------------------------
+    # Graph message passing
+    # ----------------------------
+    def graph_message_passing(self,h,edge_index):
+        src,dst=edge_index
+        messages = h[src]
+        
+        #sum messages into each node
+        agg = torch.zeros_like(h)
+        agg.index_add_(0,dst,messages)
+        
+        # normalize by degree (VERY IMPORTANT)
+        deg = torch.bincount(dst, minlength=h.size(0)).clamp(min=1).unsqueeze(1)
+        agg = agg / deg
 
-    def forward(self, observation_space_as_features: torch.Tensor, truck_positions: np.array, visited_mask: torch.Tensor, inactive_trucks_mask: torch.Tensor):
+        out =F.relu(self.msg_linear(agg))
+        # apply linear layer + activation
+        return h+out
+
+         
+    def forward(self, observation_space_as_features: torch.Tensor, truck_positions: np.array, visited_mask: torch.Tensor, inactive_trucks_mask: torch.Tensor,coords):
         """
         observation_space_as_features: [N, size_dim]
         truck_positions: np.array
@@ -191,10 +242,22 @@ class FactorizedFleetPolicy(nn.Module):
         #    self.features = nn.Linear(input_features_size, self.embed_dim)        
 
         h = self.features(observation_space_as_features)           # [N, D]
-        truck_h = h[truck_positions] 
+        #Build KNN and do message passing 
+        edge_index = self.build_edge_index(coords)
+        h = self.graph_message_passing(h,edge_index)
+        
+        #Global graph now
+        graph_ctx = h.mean(0)  # [D]
+        
+        #Truck Embeddings
+        if isinstance(truck_positions,torch.Tensor):
+            truck_pos_tensor = truck_positions.to(h.device)
+        else:
+            truck_pos_tensor = torch.tensor(truck_positions,device=h.device, dtype=torch.long)
+        truck_h = h[truck_pos_tensor] 
 
         visited_mask = visited_mask.bool()
-        graph_ctx = self.msg_linear(h.mean(0))  # [D]
+       
 
         # ---------- TRUCK SELECTION ----------
         tq = self.truck_query(truck_h + graph_ctx) # [T,D]
