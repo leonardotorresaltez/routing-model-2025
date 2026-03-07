@@ -162,6 +162,8 @@ class FactorizedFleetPolicy(nn.Module):
         # self.features = None
         # Simple graph message passing (1 step)
         self.msg_linear = nn.Linear(embed_dim, embed_dim)
+        self.layer_norm = nn.LayerNorm(embed_dim)
+        self._edge_index = None  # cached — coords never change between steps/episodes
 
         # node selector pointer mechanism
         self.query = nn.Linear(embed_dim, embed_dim)
@@ -223,9 +225,8 @@ class FactorizedFleetPolicy(nn.Module):
         deg = torch.bincount(dst, minlength=h.size(0)).clamp(min=1).unsqueeze(1)
         agg = agg / deg
 
-        out =F.relu(self.msg_linear(agg))
-        # apply linear layer + activation
-        return h+out
+        out = F.relu(self.msg_linear(self.layer_norm(agg)))
+        return h + out
 
          
     def forward(self, observation_space_as_features: torch.Tensor, truck_positions: np.array, visited_mask: torch.Tensor, inactive_trucks_mask: torch.Tensor,coords):
@@ -242,9 +243,9 @@ class FactorizedFleetPolicy(nn.Module):
         #    self.features = nn.Linear(input_features_size, self.embed_dim)        
 
         h = self.features(observation_space_as_features)           # [N, D]
-        #Build KNN and do message passing 
-        edge_index = self.build_edge_index(coords)
-        h = self.graph_message_passing(h,edge_index)
+        if self._edge_index is None:
+            self._edge_index = self.build_edge_index(coords)
+        h = self.graph_message_passing(h, self._edge_index)
         
         #Global graph now
         graph_ctx = h.mean(0)  # [D]
@@ -260,12 +261,13 @@ class FactorizedFleetPolicy(nn.Module):
        
 
         # ---------- TRUCK SELECTION ----------
-        tq = self.truck_query(truck_h + graph_ctx) # [T,D]
-        tk = self.truck_key(truck_h)               # [T,D]
+        # global context as query: "given the state of the world, which truck fits best?"
+        tq = self.truck_query(graph_ctx)   # [D]
+        tk = self.truck_key(truck_h)       # [T, D]
 
-        truck_scores = torch.matmul(tq, tk.T).diag()  # [T]
-        truck_scores = truck_scores.masked_fill(inactive_trucks_mask, -1e9)  # Apply truck time mask
-        truck_probs = F.softmax(truck_scores, dim=0)  
+        truck_scores = torch.matmul(tk, tq)  # [T]
+        truck_scores = truck_scores.masked_fill(inactive_trucks_mask, -1e9)
+        truck_probs = F.softmax(truck_scores, dim=0)
         
         # ---------- NODE SELECTION ----------
         query = self.query(truck_h + graph_ctx)  # [D]

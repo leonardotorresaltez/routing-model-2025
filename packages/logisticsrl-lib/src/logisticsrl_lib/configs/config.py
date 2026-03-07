@@ -25,6 +25,10 @@ class Config:
 
     entropy_bonus: float = 0.05  # Coefficient for entropy bonus to encourage exploration (raised from 0.01)
     value_coef: float = 0.1      # Coefficient for critic (value) loss in A2C (lowered from 0.5)
+
+    # --- PPO ---
+    ppo_epochs: int = 2      # Re-use each episode's data N times with ratio clipping
+    eps_clip: float = 0.2    # Max allowed policy ratio change: π_new/π_old ∈ [1-ε, 1+ε]
     
     def __post_init__(self):
         if self.data_dir == "data_version_2":

@@ -22,12 +22,21 @@ class REINFORCEAgent:
         self.policy.to(cfg.device)
         self.optimizer = optim.Adam(self.policy.parameters(), lr=cfg.lr)
         
-        # Buffers for A2C
+        # Buffers for PPO
         self.log_probs = []
         self.rewards = []
         self.entropies = []
         self.values = []   # V(s_t) from critic
         self.terminal_bonus = 0.0  # fleet_time + coverage, redistributed undiscounted
+
+        # PPO observation/action buffers (for re-evaluation across epochs)
+        self.obs_features = []
+        self.obs_truck_pos = []
+        self.obs_visited = []
+        self.obs_inactive = []
+        self.obs_coords = []
+        self.actions_truck = []
+        self.actions_node = []
 
 
 
@@ -44,13 +53,20 @@ class REINFORCEAgent:
         
         coords = torch.tensor(obs["nodes"], dtype=torch.float32, device=self.cfg.device)
         truck, node = self._select_action(
-            observation_space_as_features,  
-            obs["truck_positions"], 
+            observation_space_as_features,
+            obs["truck_positions"],
             visited_enriched_tensor,
             inactive_trucks_mask,
             coords)
-        
 
+        # Store obs + action for PPO re-evaluation
+        self.obs_features.append(observation_space_as_features.detach())
+        self.obs_truck_pos.append(obs["truck_positions"].copy())
+        self.obs_visited.append(visited_enriched_tensor.detach())
+        self.obs_inactive.append(inactive_trucks_mask.detach())
+        self.obs_coords.append(coords.detach())
+        self.actions_truck.append(int(truck))
+        self.actions_node.append(int(node))
 
         return int(truck), int(node)
         
@@ -65,17 +81,17 @@ class REINFORCEAgent:
 
     def update(self):
         """
-        A2C: Actor-Critic policy gradient.
-        Policy loss uses advantages A_t = G_t - V(s_t) instead of raw returns.
-        Value loss minimizes MSE between V(s_t) and G_t.
+        PPO: Proximal Policy Optimization.
+        Prevents mode collapse by clipping π_new/π_old ∈ [1-ε, 1+ε], so no single
+        gradient update can push the policy too far from its current distribution.
+        Advantages and old log probs are fixed across ppo_epochs; only the policy
+        parameters change, constrained by the clip.
         """
-        n_probs = len(self.log_probs)
-        n_rewards = len(self.rewards)
+        n = len(self.log_probs)
+        assert n == len(self.rewards), \
+            f"MISALIGNMENT DETECTED! You have {n} actions but {len(self.rewards)} rewards."
 
-        if self.cfg.debug: print(f"DEBUG: Log_Probs: {n_probs} | Rewards: {n_rewards}")
-
-        assert n_probs == n_rewards, \
-            f"MISALIGNMENT DETECTED! You have {n_probs} actions but {n_rewards} rewards."
+        if self.cfg.debug: print(f"DEBUG: Log_Probs: {n} | Rewards: {len(self.rewards)}")
 
         # --- 1. Compute discounted returns G_t (backward) ---
         R = 0
@@ -83,55 +99,72 @@ class REINFORCEAgent:
         for r in reversed(self.rewards):
             R = r + self.cfg.gamma * R
             returns.insert(0, R)
-
         returns = torch.tensor(returns, dtype=torch.float32).to(self.cfg.device)
 
         # --- 1b. Redistribute terminal bonus to ALL steps (undiscounted) ---
-        # Terminal rewards (fleet_time + coverage) discounted over 492 steps contribute
-        # only gamma^492 ≈ 0.007 to G_0 — effectively invisible.
-        # By adding the terminal bonus uniformly to every G_t, the fleet time signal
-        # is present at every step, enabling credit assignment across the episode.
         returns = returns + self.terminal_bonus
         self.terminal_bonus = 0.0
 
-        # --- 2. Advantages A_t = G_t - V(s_t) (escala original) ---
-        values = torch.stack(self.values).to(self.cfg.device)    # [T]
-        advantages = returns - values.detach()
-
-        # Normalizar VENTAJAS (no returns): mantiene el policy gradient en escala controlada
-        # independientemente de cuán equivocado esté el crítico en este momento
+        # --- 2. Advantages fixed across epochs (computed from first-pass critic values) ---
+        values_first = torch.stack(self.values).to(self.cfg.device)
+        advantages = returns - values_first.detach()
         advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-9)
-
-        # --- 3. Policy loss: mean (no sum) → gradientes independientes del largo del episodio ---
-        policy_loss = torch.stack(
-            [-lp * adv for lp, adv in zip(self.log_probs, advantages)]
-        ).mean()
-
-        # --- 4. Value loss: MSE(V(s_t), G_t normalizado) ---
         returns_norm = (returns - returns.mean()) / (returns.std() + 1e-9)
-        value_loss = F.mse_loss(values, returns_norm)
 
-        # --- 5. Entropy bonus ---
-        entropy_loss = torch.stack(self.entropies).mean()
+        # --- 3. Old log probs: reference point that the clip is measured against ---
+        old_log_probs = torch.stack(self.log_probs).detach()  # [n]
 
-        # --- 6. Total loss ---
-        loss = (policy_loss
-                + self.cfg.value_coef * value_loss
-                - self.cfg.entropy_bonus * entropy_loss)
+        # --- 4. PPO epochs: re-use the episode data ppo_epochs times ---
+        for _ in range(self.cfg.ppo_epochs):
+            new_log_probs, new_values, new_entropies = [], [], []
 
-        self.optimizer.zero_grad()
-        loss.backward()
-        grad_norm = torch.nn.utils.clip_grad_norm_(self.policy.parameters(), max_norm=0.5)
-        self.optimizer.step()
+            for i in range(n):
+                lp, ent, val = self._evaluate_action_log_prob(
+                    self.obs_features[i],
+                    self.obs_truck_pos[i],
+                    self.obs_visited[i],
+                    self.obs_inactive[i],
+                    self.obs_coords[i],
+                    self.actions_truck[i],
+                    self.actions_node[i],
+                )
+                new_log_probs.append(lp)
+                new_values.append(val)
+                new_entropies.append(ent)
 
-        # Clear buffers
+            new_log_probs = torch.stack(new_log_probs)
+            new_values = torch.stack(new_values)
+            entropy_loss = torch.stack(new_entropies).mean()
+
+            # PPO clipped surrogate objective
+            ratio = torch.exp(new_log_probs - old_log_probs)
+            clipped = torch.clamp(ratio, 1 - self.cfg.eps_clip, 1 + self.cfg.eps_clip)
+            policy_loss = -torch.min(ratio * advantages, clipped * advantages).mean()
+
+            value_loss = F.mse_loss(new_values, returns_norm)
+
+            loss = (policy_loss
+                    + self.cfg.value_coef * value_loss
+                    - self.cfg.entropy_bonus * entropy_loss)
+
+            self.optimizer.zero_grad()
+            loss.backward()
+            grad_norm = torch.nn.utils.clip_grad_norm_(self.policy.parameters(), max_norm=0.5)
+            self.optimizer.step()
+
+        # --- 5. Clear all buffers ---
         self.log_probs.clear()
         self.rewards.clear()
         self.entropies.clear()
         self.values.clear()
+        self.obs_features.clear()
+        self.obs_truck_pos.clear()
+        self.obs_visited.clear()
+        self.obs_inactive.clear()
+        self.obs_coords.clear()
+        self.actions_truck.clear()
+        self.actions_node.clear()
 
-        # returns.mean() = mean discounted return per episode (increases as agent improves).
-        # Previously logged advantages.mean() which is always ~0 by construction (useless).
         return loss.item(), entropy_loss.item(), grad_norm.item(), returns.mean().item()
       
     
@@ -261,6 +294,32 @@ class REINFORCEAgent:
      
                 
         
+    def _evaluate_action_log_prob(self, features, truck_pos, visited_mask, inactive_mask, coords, a_truck, a_node):
+        """
+        Re-evaluate log_prob and entropy for a stored (obs, action) pair under the current policy.
+        Mirrors the NO-OP detection logic of _select_action so both paths are consistent.
+        """
+        truck_probs, node_probs, value = self.policy(features, truck_pos, visited_mask, inactive_mask, coords)
+
+        truck_dist = torch.distributions.Categorical(truck_probs)
+        num_nodes = features.shape[0]
+
+        # Replicate NO-OP detection: if all node scores are uniform (all masked) → NO-OP was forced
+        row = node_probs[a_truck]
+        if a_node == num_nodes or torch.allclose(row, torch.full_like(row, row[0].item())):
+            node_p = torch.zeros(num_nodes + 1, device=self.cfg.device)
+            node_p[-1] = 1.0  # NO-OP has probability 1
+        else:
+            node_p = row
+
+        node_dist = torch.distributions.Categorical(node_p)
+
+        a_truck_t = torch.tensor(a_truck, device=self.cfg.device)
+        a_node_t = torch.tensor(a_node, device=self.cfg.device)
+        log_prob = truck_dist.log_prob(a_truck_t) + node_dist.log_prob(a_node_t)
+        entropy = truck_dist.entropy() + node_dist.entropy()
+        return log_prob, entropy, value
+
     def _select_action(self, nodes, truck_positions, visited_enriched, inactive_trucks_mask, coords):
         """
         Helper to select the next action or return NO-OP if all nodes are visited.
