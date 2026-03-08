@@ -7,7 +7,7 @@ class Config:
     project_name: str = "routing-model-2025"
     run_name: str = "default"
     seed: int = 42
-    device: str = "cpu"
+    device: str = "cuda" if __import__("torch").cuda.is_available() else "cpu"
     wandb: bool = False  # Toggle W&B logging
     data_dir: str = "data_version_2"  # data path
     debug = False
@@ -18,7 +18,7 @@ class Config:
     
     # --- Training ---
     lr: float = 1e-3
-    episodes: int = 500 if not debug else 2
+    episodes: int = 2000 if not debug else 2
     log_interval: int = 20
     gamma: float = 0.99  # Discount factor for rewards (raised from 0.95: terminal fleet-time reward was discounted to ~0 with 492 steps)
     max_extra_steps: int = 10  # Maximum extra steps allowed beyond the number of nodes, to prevent infinite episodes
@@ -27,8 +27,9 @@ class Config:
     value_coef: float = 0.1      # Coefficient for critic (value) loss in A2C (lowered from 0.5)
 
     # --- PPO ---
-    ppo_epochs: int = 2      # Re-use each episode's data N times with ratio clipping
-    eps_clip: float = 0.2    # Max allowed policy ratio change: π_new/π_old ∈ [1-ε, 1+ε]
+    ppo_epochs: int = 2       # Re-use each episode's data N times with ratio clipping
+    eps_clip: float = 0.2     # Max allowed policy ratio change: π_new/π_old ∈ [1-ε, 1+ε]
+    ppo_chunk_size: int = 32  # Steps per mini-batch in PPO update (limits GNN intermediate tensor size)
     
     def __post_init__(self):
         if self.data_dir == "data_version_2":

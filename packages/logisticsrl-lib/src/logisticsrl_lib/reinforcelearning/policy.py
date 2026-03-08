@@ -151,7 +151,7 @@ class GraphPointerPolicy_old(nn.Module):
 class FactorizedFleetPolicy(nn.Module):
     #_SUM_OTHER_DIM = 2
     
-    def __init__(self, cfg, embed_dim=128,input_features_size=10,knn_k=10):
+    def __init__(self, cfg, embed_dim=128, input_features_size=10, knn_k=15):
         super().__init__()
         self.cfg = cfg
 
@@ -213,73 +213,91 @@ class FactorizedFleetPolicy(nn.Module):
     # ----------------------------
     # Graph message passing
     # ----------------------------
-    def graph_message_passing(self,h,edge_index):
-        src,dst=edge_index
-        messages = h[src]
-        
-        #sum messages into each node
-        agg = torch.zeros_like(h)
-        agg.index_add_(0,dst,messages)
-        
-        # normalize by degree (VERY IMPORTANT)
-        deg = torch.bincount(dst, minlength=h.size(0)).clamp(min=1).unsqueeze(1)
-        agg = agg / deg
+    def graph_message_passing(self, h, edge_index):
+        src, dst = edge_index
+
+        if h.dim() == 2:
+            # Single env: [N, D]
+            agg = torch.zeros_like(h)
+            agg.index_add_(0, dst, h[src])
+            deg = torch.bincount(dst, minlength=h.size(0)).clamp(min=1).unsqueeze(1)
+            agg = agg / deg
+        else:
+            # Batched: [B, N, D]
+            B, N, D = h.shape
+            E = src.shape[0]
+            src_idx = src.view(1, E, 1).expand(B, E, D)
+            dst_idx = dst.view(1, E, 1).expand(B, E, D)
+            agg = torch.zeros(B, N, D, device=h.device)
+            agg.scatter_add_(1, dst_idx, h.gather(1, src_idx))
+            deg = torch.bincount(dst, minlength=N).clamp(min=1).view(1, N, 1)
+            agg = agg / deg
 
         out = F.relu(self.msg_linear(self.layer_norm(agg)))
         return h + out
 
          
-    def forward(self, observation_space_as_features: torch.Tensor, truck_positions: np.array, visited_mask: torch.Tensor, inactive_trucks_mask: torch.Tensor,coords):
+    def forward(self, observation_space_as_features: torch.Tensor, truck_positions, visited_mask: torch.Tensor, inactive_trucks_mask: torch.Tensor, coords: torch.Tensor):
         """
-        observation_space_as_features: [N, size_dim]
-        truck_positions: np.array
-        visited_mask: [T, N] bool  (True = forbidden)
-        inactive_trucks_mask: [T] bool (True = inactive)
+        Single env:  features [N, F], truck_positions [T], visited_mask [T, N], inactive [T]
+        Batched:     features [B, N, F], truck_positions [B, T], visited_mask [B, T, N], inactive [B, T]
         """
-        
-        # Dynamically initialize self.features if it is None
-        #if self.features is None:
-        #    input_features_size = observation_space_as_features.size(1)  # number of nodes dynamically
-        #    self.features = nn.Linear(input_features_size, self.embed_dim)        
+        batched = observation_space_as_features.dim() == 3
 
-        h = self.features(observation_space_as_features)           # [N, D]
+        h = self.features(observation_space_as_features)  # [N,D] or [B,N,D]
+
         if self._edge_index is None:
-            self._edge_index = self.build_edge_index(coords)
+            c = coords[0] if batched else coords
+            self._edge_index = self.build_edge_index(c)
         h = self.graph_message_passing(h, self._edge_index)
-        
-        #Global graph now
-        graph_ctx = h.mean(0)  # [D]
-        
-        #Truck Embeddings
-        if isinstance(truck_positions,torch.Tensor):
-            truck_pos_tensor = truck_positions.to(h.device)
-        else:
-            truck_pos_tensor = torch.tensor(truck_positions,device=h.device, dtype=torch.long)
-        truck_h = h[truck_pos_tensor] 
 
         visited_mask = visited_mask.bool()
-       
 
-        # ---------- TRUCK SELECTION ----------
-        # global context as query: "given the state of the world, which truck fits best?"
-        tq = self.truck_query(graph_ctx)   # [D]
-        tk = self.truck_key(truck_h)       # [T, D]
+        if not batched:
+            # ---------- Single env path (unchanged) ----------
+            graph_ctx = h.mean(0)  # [D]
 
-        truck_scores = torch.matmul(tk, tq)  # [T]
+            if isinstance(truck_positions, torch.Tensor):
+                truck_pos_t = truck_positions.to(h.device)
+            else:
+                truck_pos_t = torch.tensor(truck_positions, device=h.device, dtype=torch.long)
+            truck_h = h[truck_pos_t]  # [T, D]
+
+            tq = self.truck_query(graph_ctx)    # [D]
+            tk = self.truck_key(truck_h)        # [T, D]
+            truck_scores = torch.matmul(tk, tq).masked_fill(inactive_trucks_mask, -1e9)
+            truck_probs = F.softmax(truck_scores, dim=0)
+
+            query = self.query(truck_h + graph_ctx)  # [T, D]
+            keys = self.key(h)                        # [N, D]
+            node_scores = torch.matmul(query, keys.T).masked_fill(visited_mask, -1e9)
+            node_probs = F.softmax(node_scores, dim=-1)
+
+            value = self.value_head(graph_ctx).squeeze(-1)
+            if self.cfg.debug:
+                print(f"DEBUG: node_probs shape: {node_probs.shape} | sum: {node_probs.sum().item():.4f}")
+            return truck_probs, node_probs, value
+
+        # ---------- Batched path: [B, N, D] ----------
+        B, N, D = h.shape
+        graph_ctx = h.mean(dim=1)  # [B, D]
+
+        # truck_positions: [B, T]
+        T = truck_positions.shape[1]
+        tp = truck_positions.unsqueeze(-1).expand(-1, -1, D)  # [B, T, D]
+        truck_h = h.gather(1, tp)                             # [B, T, D]
+
+        tq = self.truck_query(graph_ctx).unsqueeze(-1)  # [B, D, 1]
+        tk = self.truck_key(truck_h)                    # [B, T, D]
+        truck_scores = torch.bmm(tk, tq).squeeze(-1)   # [B, T]
         truck_scores = truck_scores.masked_fill(inactive_trucks_mask, -1e9)
-        truck_probs = F.softmax(truck_scores, dim=0)
-        
-        # ---------- NODE SELECTION ----------
-        query = self.query(truck_h + graph_ctx)  # [D]
-        keys = self.key(h)                               # [N, D]
+        truck_probs = F.softmax(truck_scores, dim=-1)   # [B, T]
 
-        node_scores = torch.matmul(query, keys.T)               # [N]       
-        node_scores = node_scores.masked_fill(visited_mask, -1e9)    
-        node_probs = F.softmax(node_scores, dim=-1)  # Corrected dimension for softmax to apply along the last axis     
- 
-        
-        # critic: V(s) from graph context
-        value = self.value_head(graph_ctx).squeeze(-1)  # scalar
+        query = self.query(truck_h + graph_ctx.unsqueeze(1))        # [B, T, D]
+        keys = self.key(h)                                          # [B, N, D]
+        node_scores = torch.bmm(query, keys.transpose(1, 2))        # [B, T, N]
+        node_scores = node_scores.masked_fill(visited_mask, -1e9)
+        node_probs = F.softmax(node_scores, dim=-1)                 # [B, T, N]
 
-        if self.cfg.debug: print(f"DEBUG: Action probabilities shape: {node_probs.cpu().detach().numpy().shape} | Sum: {node_probs.sum().item():.4f}")
+        value = self.value_head(graph_ctx).squeeze(-1)  # [B]
         return truck_probs, node_probs, value

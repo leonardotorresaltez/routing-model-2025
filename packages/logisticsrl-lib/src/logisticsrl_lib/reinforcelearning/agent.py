@@ -38,9 +38,21 @@ class REINFORCEAgent:
         self.actions_truck = []
         self.actions_node = []
 
+        # Episode-level cache for tensors that are constant within an episode
+        self._ep_time_matrix = None    # [N, N] GPU — uploaded once per episode
+        self._ep_coords = None         # [N, 2] GPU — constant per episode
+        self._ep_is_target = None      # [N, 1] GPU — constant per episode
+        self._ep_home_counts = None    # [N, 1] GPU — constant per episode
+        self._ep_min_dist_depot = None # [N, 1] GPU — constant per episode
+        self._ep_return_times = None   # [T, N] GPU — return times to home depot, constant per episode
+
 
 
     def act(self, obs):
+
+        # --- Initialize episode cache on first step of each episode ---
+        if len(self.log_probs) == 0:
+            self._init_episode_cache(obs)
 
         # masking: Calculate valid moves
         visited_enriched_tensor = self._apply_time_constraints_v3(obs)
@@ -114,43 +126,79 @@ class REINFORCEAgent:
         # --- 3. Old log probs: reference point that the clip is measured against ---
         old_log_probs = torch.stack(self.log_probs).detach()  # [n]
 
-        # --- 4. PPO epochs: re-use the episode data ppo_epochs times ---
+        # --- 4. Pre-build batched tensors for fast PPO re-evaluation ---
+        device = self.cfg.device
+        features_batch  = torch.stack(self.obs_features)   # [n, N_nodes, F]
+        visited_batch   = torch.stack(self.obs_visited)    # [n, T, N_nodes]
+        inactive_batch  = torch.stack(self.obs_inactive)   # [n, T]
+        coords_batch    = torch.stack(self.obs_coords)     # [n, N_nodes, 2]
+        truck_pos_batch = torch.from_numpy(
+            np.array(self.obs_truck_pos, dtype=np.int64)
+        ).to(device)  # [n, T]
+        actions_truck_t = self.actions_truck   # plain Python list[int]
+        actions_node_t  = self.actions_node    # plain Python list[int]
+        num_nodes = self.obs_features[0].shape[0]
+
+        # --- 5. PPO epochs with mini-batch gradient accumulation ---
+        # Chunk size limits the GNN intermediate tensor to ~chunk × E × D bytes.
+        # E.g. chunk=32, E=20705, D=256 → 32×20705×256×4 ≈ 677 MB (fits in 8 GB VRAM).
+        CHUNK = self.cfg.ppo_chunk_size
+
         for _ in range(self.cfg.ppo_epochs):
-            new_log_probs, new_values, new_entropies = [], [], []
-
-            for i in range(n):
-                lp, ent, val = self._evaluate_action_log_prob(
-                    self.obs_features[i],
-                    self.obs_truck_pos[i],
-                    self.obs_visited[i],
-                    self.obs_inactive[i],
-                    self.obs_coords[i],
-                    self.actions_truck[i],
-                    self.actions_node[i],
-                )
-                new_log_probs.append(lp)
-                new_values.append(val)
-                new_entropies.append(ent)
-
-            new_log_probs = torch.stack(new_log_probs)
-            new_values = torch.stack(new_values)
-            entropy_loss = torch.stack(new_entropies).mean()
-
-            # PPO clipped surrogate objective
-            ratio = torch.exp(new_log_probs - old_log_probs)
-            clipped = torch.clamp(ratio, 1 - self.cfg.eps_clip, 1 + self.cfg.eps_clip)
-            policy_loss = -torch.min(ratio * advantages, clipped * advantages).mean()
-
-            value_loss = F.mse_loss(new_values, returns_norm)
-
-            loss = (policy_loss
-                    + self.cfg.value_coef * value_loss
-                    - self.cfg.entropy_bonus * entropy_loss)
-
             self.optimizer.zero_grad()
-            loss.backward()
+            total_entropy = torch.tensor(0.0, device=device)
+
+            for start in range(0, n, CHUNK):
+                end = min(start + CHUNK, n)
+                chunk_n = end - start
+
+                # Batched forward for this chunk only
+                tp_b, np_b, vals_b = self.policy(
+                    features_batch[start:end],
+                    truck_pos_batch[start:end],
+                    visited_batch[start:end],
+                    inactive_batch[start:end],
+                    coords_batch[start:end],
+                )
+
+                chunk_log_probs, chunk_entropies = [], []
+                for j, i in enumerate(range(start, end)):
+                    a_truck = actions_truck_t[i]
+                    a_node  = actions_node_t[i]
+
+                    truck_dist = torch.distributions.Categorical(tp_b[j])
+                    row = np_b[j][a_truck]
+                    if a_node == num_nodes or torch.allclose(row, torch.full_like(row, row[0].item())):
+                        node_p = torch.zeros(num_nodes + 1, device=device)
+                        node_p[-1] = 1.0
+                    else:
+                        node_p = row
+
+                    node_dist = torch.distributions.Categorical(node_p)
+                    a_truck_t2 = torch.tensor(a_truck, device=device)
+                    a_node_t2  = torch.tensor(a_node,  device=device)
+                    chunk_log_probs.append(truck_dist.log_prob(a_truck_t2) + node_dist.log_prob(a_node_t2))
+                    chunk_entropies.append(truck_dist.entropy() + node_dist.entropy())
+
+                chunk_lp = torch.stack(chunk_log_probs)
+                entropy_chunk = torch.stack(chunk_entropies).mean()
+                total_entropy = total_entropy + entropy_chunk * (chunk_n / n)
+
+                ratio = torch.exp(chunk_lp - old_log_probs[start:end])
+                clipped = torch.clamp(ratio, 1 - self.cfg.eps_clip, 1 + self.cfg.eps_clip)
+                policy_loss = -torch.min(ratio * advantages[start:end],
+                                         clipped * advantages[start:end]).mean()
+                value_loss  = F.mse_loss(vals_b, returns_norm[start:end])
+                chunk_loss  = (policy_loss
+                               + self.cfg.value_coef * value_loss
+                               - self.cfg.entropy_bonus * entropy_chunk) * (chunk_n / n)
+                chunk_loss.backward()  # accumulates gradients across chunks
+
             grad_norm = torch.nn.utils.clip_grad_norm_(self.policy.parameters(), max_norm=0.5)
             self.optimizer.step()
+
+        loss        = chunk_loss      # last chunk loss (for logging)
+        entropy_loss = total_entropy  # weighted entropy (for logging)
 
         # --- 5. Clear all buffers ---
         self.log_probs.clear()
@@ -169,71 +217,76 @@ class REINFORCEAgent:
       
     
     
+    def _init_episode_cache(self, obs):
+        """Upload and compute all tensors that are constant for the entire episode."""
+        device = self.cfg.device
+        tm = obs["time_matrix"]
+        # Upload time_matrix once (it never changes within an episode)
+        if isinstance(tm, torch.Tensor):
+            self._ep_time_matrix = tm.to(device, dtype=torch.float32, non_blocking=True)
+        else:
+            self._ep_time_matrix = torch.tensor(tm, dtype=torch.float32, device=device)
+
+        self._ep_coords = torch.tensor(obs["nodes"], dtype=torch.float32, device=device)
+        self._ep_is_target = torch.tensor(obs["is_target"], dtype=torch.float32, device=device).unsqueeze(1)
+
+        # home_counts: how many trucks start at each node
+        num_nodes = self._ep_coords.shape[0]
+        home_counts = torch.zeros(num_nodes, 1, device=device)
+        for idx in obs["truck_starts"]:
+            home_counts[idx] += 1
+        self._ep_home_counts = home_counts
+
+        # min_dist_to_depot: closest depot distance per node
+        depot_indices = list(set(obs["truck_starts"]))
+        dist_to_depots = self._ep_time_matrix[:, depot_indices]
+        self._ep_min_dist_depot, _ = torch.min(dist_to_depots, dim=1, keepdim=True)
+
+        # return_times[t, n] = time_matrix[n, truck_starts[t]] — for constraint mask
+        truck_starts_t = torch.tensor(obs["truck_starts"], dtype=torch.long, device=device)
+        self._ep_return_times = self._ep_time_matrix[:, truck_starts_t].T  # [T, N]
+
     def _get_enriched_observation_space(self, obs):
         """
         Concatenate spatial, status, and fleet context into a fixed-size feature vector.
-        Removed the N*N time_matrix to improve generalization.
+        Invariant features (coords, is_target, home_counts, min_dist_depot) come from
+        the episode cache — computed once, reused every step.
         """
         device = self.cfg.device
-        
-        # 1. Coordinates (Spatial information) - Shape: [N, 2]
-        coords = torch.tensor(obs["nodes"], dtype=torch.float32, device=device)
-        num_nodes = coords.shape[0]
+        num_nodes = self._ep_coords.shape[0]
 
-        # 2. Node Status - Shape: [N, 1] each
-        is_target = torch.tensor(obs["is_target"], dtype=torch.float32, device=device).unsqueeze(1)
+        # Dynamic per-step features
         visited = torch.tensor(obs["visited_targets"], dtype=torch.float32, device=device).unsqueeze(1)
-
-        # 3. Global Fleet Context (Broadcasted) - Shape: [N, 3]
         inactive_mask = torch.tensor(obs["inactive_trucks_mask"], dtype=torch.float32, device=device)
         truck_times = torch.tensor(obs["truck_times"], dtype=torch.float32, device=device)
-        
-        active_ratio = (1.0 - inactive_mask).mean().reshape(1, 1)
+
+        active_ratio  = (1.0 - inactive_mask).mean().reshape(1, 1)
         avg_fleet_time = truck_times.mean().reshape(1, 1)
         max_fleet_time = truck_times.max().reshape(1, 1)
-        
-        fleet_stats = torch.cat([active_ratio, avg_fleet_time, max_fleet_time], dim=1).repeat(num_nodes, 1)
+        fleet_stats = torch.cat([active_ratio, avg_fleet_time, max_fleet_time], dim=1).expand(num_nodes, -1)
 
-        # 4. Depot / Home Information
-        truck_starts = obs["truck_starts"] # List of depot indices
-        
-        # Feature: Is this node a home depot? (And how many trucks live there)
-        home_counts = torch.zeros(num_nodes, 1, device=device)
-        for start_idx in truck_starts:
-            home_counts[start_idx] += 1
-            
-        # Feature: Proximity to safety (Distance to nearest depot)
-        time_matrix = torch.tensor(obs["time_matrix"], dtype=torch.float32, device=device)
-        depot_indices = list(set(truck_starts))
-        dist_to_depots = time_matrix[:, depot_indices]
-        min_dist_to_depot, _ = torch.min(dist_to_depots, dim=1, keepdim=True)
-
-        # 5. Min distance from any active truck to each node - Shape: [N, 1]
-        truck_positions = obs["truck_positions"]
+        # Min distance from any active truck to each node
         inactive_mask_bool = obs["inactive_trucks_mask"].astype(bool)
-        active_truck_positions = [
-            truck_positions[i] for i in range(len(truck_positions)) if not inactive_mask_bool[i]
-        ]
-        if active_truck_positions:
-            truck_dists = time_matrix[active_truck_positions, :]  # [active_T, N]
-            min_dist_from_trucks, _ = torch.min(truck_dists, dim=0, keepdim=True)
-            min_dist_from_trucks = min_dist_from_trucks.T  # [N, 1]
+        active_positions = [i for i, inact in enumerate(inactive_mask_bool) if not inact]
+        if active_positions:
+            active_pos_t = torch.tensor(active_positions, dtype=torch.long, device=device)
+            truck_positions_t = torch.tensor(obs["truck_positions"], dtype=torch.long, device=device)
+            active_node_ids = truck_positions_t[active_pos_t]
+            truck_dists = self._ep_time_matrix[active_node_ids]         # [active_T, N]
+            min_dist_from_trucks = truck_dists.min(dim=0).values.unsqueeze(1)  # [N, 1]
         else:
             min_dist_from_trucks = torch.zeros(num_nodes, 1, device=device)
 
-        # 6. Final Concatenation - Total Dimension: 10
-        # [Coords(2), Target(1), Visited(1), Fleet(3), Home(1), MinDepot(1), MinTruck(1)]
-        enriched_tensor = torch.cat([
-            coords,
-            is_target,
+        # [Coords(2), Target(1), Visited(1), Fleet(3), Home(1), MinDepot(1), MinTruck(1)] = 10
+        return torch.cat([
+            self._ep_coords,
+            self._ep_is_target,
             visited,
             fleet_stats,
-            home_counts,
-            min_dist_to_depot,
-            min_dist_from_trucks
+            self._ep_home_counts,
+            self._ep_min_dist_depot,
+            min_dist_from_trucks,
         ], dim=1)
-
-        return enriched_tensor
 
 
     # def _get_enriched_observation_space(self, obs):
@@ -254,42 +307,25 @@ class REINFORCEAgent:
     
     def _apply_time_constraints_v3(self, obs):
         """
-        Optimized version of _apply_time_constraints with corrected return time calculation.
+        Vectorized time-constraint masking — no Python loop over trucks.
+        Uses cached time_matrix and return_times from _init_episode_cache.
         """
-        visited_mask = obs["visited_targets"]
-        time_matrix = obs["time_matrix"]
-        truck_positions = obs["truck_positions"]
-        truck_starts = obs["truck_starts"]
-        truck_times = obs["truck_times"]        
-        
-        time_matrix = torch.as_tensor(time_matrix, device=self.cfg.device)  # Avoid unnecessary tensor creation
-        visited_mask = torch.tensor(visited_mask, dtype=torch.bool, device=self.cfg.device)  # Ensure visited_mask is a tensor
-        masks = visited_mask.clone()  # Start with the visited mask
+        device = self.cfg.device
+        visited_mask = torch.tensor(obs["visited_targets"], dtype=torch.bool, device=device)
+        # [T, N] — each row is the visited mask per truck
+        masks = visited_mask.unsqueeze(0).expand(len(obs["truck_positions"]), -1).clone()
 
-        # Ensure masks has the correct shape for multiple trucks
-        if masks.dim() == 1:
-            masks = masks.unsqueeze(0).repeat(len(truck_positions), 1)
+        truck_positions_t = torch.tensor(obs["truck_positions"], dtype=torch.long, device=device)  # [T]
+        truck_times_t     = torch.tensor(obs["truck_times"],     dtype=torch.float32, device=device)  # [T]
 
-        # Precompute return times from all nodes to the depot for each truck
-        return_times_from_next_nodes = {
-            truck_id: time_matrix[:, truck_starts[truck_id]]
-            for truck_id in range(len(truck_starts))
-        }
+        # travel_times[t, n] = time_matrix[truck_pos[t], n]
+        travel_times = self._ep_time_matrix[truck_positions_t]  # [T, N]
 
-        # Iterate over trucks using truck_positions
-        for truck_id, current_node in enumerate(truck_positions):
-            current_time = truck_times[truck_id]
+        # total_times[t, n] = current_time[t] + travel[t,n] + return[t,n]
+        total_times = truck_times_t.unsqueeze(1) + travel_times + self._ep_return_times  # [T, N]
 
-            # Calculate travel times from the current node to all other nodes
-            travel_times_to_next_nodes = time_matrix[current_node]
-
-            # Use precomputed return times
-            total_times = current_time + travel_times_to_next_nodes + return_times_from_next_nodes[truck_id]
-
-            # Mask nodes that exceed the time constraint
-            masks[truck_id] |= total_times > self.cfg.max_daily_delivery_time_each_truck
-
-        return masks        
+        masks |= total_times > self.cfg.max_daily_delivery_time_each_truck
+        return masks
         
      
                 
