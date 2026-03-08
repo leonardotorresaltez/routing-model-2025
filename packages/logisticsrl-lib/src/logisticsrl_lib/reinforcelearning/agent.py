@@ -21,6 +21,7 @@ class REINFORCEAgent:
         self.policy = FactorizedFleetPolicy(embed_dim=cfg.embed_dim, cfg=cfg, input_features_size=10)
         self.policy.to(cfg.device)
         self.optimizer = optim.Adam(self.policy.parameters(), lr=cfg.lr)
+        self.scheduler = torch.optim.lr_scheduler.StepLR(self.optimizer, step_size=150, gamma=0.5)
 
         # Buffers for A2C
         self.log_probs = []
@@ -151,6 +152,7 @@ class REINFORCEAgent:
         loss.backward()
         grad_norm = torch.nn.utils.clip_grad_norm_(self.policy.parameters(), max_norm=0.5)
         self.optimizer.step()
+        self.scheduler.step()
 
         # Clear buffers
         self.log_probs.clear()
