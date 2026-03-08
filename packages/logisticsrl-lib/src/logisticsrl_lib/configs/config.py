@@ -7,7 +7,7 @@ class Config:
     project_name: str = "routing-model-2025"
     run_name: str = "default"
     seed: int = 42
-    device: str = "cpu"
+    device: str = "cuda" if __import__("torch").cuda.is_available() else "cpu"
     wandb: bool = False  # Toggle W&B logging
     data_dir: str = "data_version_2"  # data path
     debug = False

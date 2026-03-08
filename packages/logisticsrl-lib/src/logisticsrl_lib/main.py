@@ -160,7 +160,7 @@ def report_every_50_episodes(
 
 def print_verification_info(nodesObjs, data, truck_starts):
     print("\n" + "="*40)
-    print("🚚  DATA INSTANCE SUMMARY  🚚")
+    print("   DATA INSTANCE SUMMARY")
     print("="*40)
     print(f"• Number of nodes:         {len(nodesObjs)}")
     print(f"• Number of depots:        {len(data['depots'])}")
