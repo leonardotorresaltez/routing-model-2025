@@ -157,6 +157,7 @@ class FactorizedFleetPolicy(nn.Module):
 
         self.embed_dim = embed_dim
         self.knn_k =knn_k
+        self.knn_temp = 1.0
         # Feature embedding — initialized at construction so the optimizer tracks it
         self.features = nn.Linear(input_features_size, embed_dim)
         # self.features = None
@@ -182,9 +183,8 @@ class FactorizedFleetPolicy(nn.Module):
     # ----------------------------    
     def build_edge_index(self,coords):
         device = coords.device
-        k = self.knn_k
-        
-        num_nodes = coords.shape[0]
+        N=coords.shape[0]
+        k = min(self.knn_k, N-1)  # Ensure k does not exceed number of nodes - 1
         
         #Pairwise distance
         dist = torch.cdist(coords,coords)
@@ -192,42 +192,35 @@ class FactorizedFleetPolicy(nn.Module):
         #K nearest neighbours(skipping itself)
         knn =dist.topk(k+1,largest=False).indices[:,1:]
         
-        #Directed edges source->destination
-        src = torch.arange(num_nodes,device=device).unsqueeze(1).repeat(1,k).reshape(-1)
-        dst = knn.reshape(-1)
-        
-        edge_index = torch.stack([src,dst],dim =0)
-        
-        #Now reverse edges destination->src
-        edge_index_rev = edge_index.flip(0)
-        edge_index = torch.cat([edge_index,edge_index_rev],dim=1)
-        
-        #Add self loops
-        self_loops = torch.arange(num_nodes,device=device)
-        self_loops = torch.stack([self_loops,self_loops],dim=0)
-        edge_index = torch.cat([edge_index,self_loops],dim=1)
-        
-        return edge_index
+       
+        # Build dense weight matrix
+        weights = torch.zeros(N, N, device=device)
+
+        row_idx = torch.arange(N, device=device).unsqueeze(1).expand(-1, k)
+        selected_dist = dist[row_idx, knn]  # [N, k]
+
+        # Soft weights
+        soft_w = torch.exp(-selected_dist / self.knn_temp)  # [N, k]
+        weights[row_idx, knn] = soft_w
+
+        # Self-loop with max weight
+        self_w = soft_w.max(dim=1, keepdim=True).values
+        weights[torch.arange(N), torch.arange(N)] = self_w.squeeze(1)
+
+        # Normalize rows
+        weights = weights / weights.sum(dim=1, keepdim=True).clamp(min=1e-9)
+        return weights
+
     # ----------------------------
     # Graph message passing
     # ----------------------------
     def graph_message_passing(self,h,edge_index):
-        src,dst=edge_index
-        messages = h[src]
-        
-        #sum messages into each node
-        agg = torch.zeros_like(h)
-        agg.index_add_(0,dst,messages)
-        
-        # normalize by degree (VERY IMPORTANT)
-        deg = torch.bincount(dst, minlength=h.size(0)).clamp(min=1).unsqueeze(1)
-        agg = agg / deg
+        agg = edge_index @ h  # [N, D]
 
         out =F.relu(self.msg_linear(agg))
         # apply linear layer + activation
         return h+out
-
-         
+        
     def forward(self, observation_space_as_features: torch.Tensor, truck_positions: np.array, visited_mask: torch.Tensor, inactive_trucks_mask: torch.Tensor,coords):
         """
         observation_space_as_features: [N, size_dim]
