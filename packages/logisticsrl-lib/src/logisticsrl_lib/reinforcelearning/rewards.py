@@ -1,6 +1,7 @@
 import gymnasium as gym
 import numpy as np
 
+
 class NormalizedRewards:
     def __init__(self, cfg,time_matrix):
        
@@ -34,11 +35,15 @@ class NormalizedRewards:
         else:
             return -self.global_mean
         
-    def getRewardTotalFleetTime(self, total_fleet_time):
+    def getRewardTotalFleetTime(self, total_fleet_time, num_customers):
         # Linear penalty, 3x stronger than the original /86.5 version.
         # At 1000h: -17.2  →  redistributed to all steps ≈ 26% of mean return (~65).
         # At  750h:  -8.6  →  ≈ 13% weight.  At 500h: 0.
-        efficiency_reward = -(total_fleet_time - 500) / 29.0
+        # print('num_nodes ', num_customers)
+        # efficiency_reward = -(total_fleet_time - 500) / 29.0
+        baseline = num_customers * 1.0  # 500h baseline came from 500 customers × 1.0h/customer
+        scale = 29.0 * (num_customers / 500.0)
+        efficiency_reward = -(total_fleet_time - baseline) / scale
         return float(np.clip(efficiency_reward, -20.0, 5.0))
             
 

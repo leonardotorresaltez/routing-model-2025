@@ -26,7 +26,10 @@ class FleetStatus:
         return np.array([state.position for state in self.trucklist.values()], dtype=np.int64)
     
     def num_nodes(self):
-        return self.nodes.shape[0] if self.nodes is not None else 0    
+        return self.nodes.shape[0] if self.nodes is not None else 0  
+    
+    def num_customers(self):
+        return (~self.source_mask).sum() if self.source_mask is not None else 0  
     
     def all_tours(self):
         return [state.tour for state in self.trucklist.values()]

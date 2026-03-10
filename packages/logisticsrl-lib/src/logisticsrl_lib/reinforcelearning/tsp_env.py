@@ -30,6 +30,7 @@ class TSPEnv(gym.Env):
         
         self.normalized_rewards = NormalizedRewards(cfg,time_matrix)           
         self.num_nodes = self.fleetStatus.num_nodes()
+        self.num_customers = self.fleetStatus.num_customers()
 
         self.source_mask = self.fleetStatus.source_mask
         self.target_mask = ~self.source_mask 
@@ -139,7 +140,7 @@ class TSPEnv(gym.Env):
                             
         terminal_bonus = 0.0
         if done or terminated:
-            fleet_time_reward = self.normalized_rewards.getRewardTotalFleetTime(self.fleetStatus.total_fleet_time())
+            fleet_time_reward = self.normalized_rewards.getRewardTotalFleetTime(self.fleetStatus.total_fleet_time(), self.num_customers)
             n_unvisited = int((self.visited_targets[self.target_mask] == 0).sum())
             coverage_reward = self.normalized_rewards.getRewardCoverage(n_unvisited)
             terminal_bonus = fleet_time_reward + coverage_reward
