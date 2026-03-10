@@ -2,17 +2,27 @@ import gymnasium as gym
 import numpy as np
 
 class NormalizedRewards:
-    def __init__(self, cfg,time_matrix):
-       
+    def __init__(self, cfg, time_matrix, knn_k=15):
+
         self.cfg = cfg
         self.time_matrix = time_matrix
         mask = time_matrix > 0
         self.global_mean = time_matrix[mask].mean().item()
-        self.global_std = time_matrix[mask].std().item() 
+        self.global_std = time_matrix[mask].std().item()
         self.global_max = time_matrix[mask].max().item()
         self.global_min = time_matrix[mask].min().item()
 
         print(f"Global time matrix stats: mean={   self.global_mean:.2f}, std={self.global_std:.2f}, min={self.global_min:.2f}, max={self. global_max:.2f}")
+
+        # Precompute KNN neighbor sets for zone reward (same k as policy)
+        tm = time_matrix.numpy() if hasattr(time_matrix, 'numpy') else np.array(time_matrix)
+        n = tm.shape[0]
+        self._knn_neighbors = []
+        for i in range(n):
+            dists = tm[i].copy()
+            dists[i] = np.inf  # exclude self
+            knn = np.argpartition(dists, knn_k)[:knn_k]
+            self._knn_neighbors.append(set(knn.tolist()))
 
  
     
@@ -50,6 +60,12 @@ class NormalizedRewards:
         """
         penalty_per_customer = self.global_mean / self.global_std  # ≈ 0.87, same scale as visit bonus
         return -n_unvisited * penalty_per_customer
+
+    def getRewardZoneBonus(self, prev_node, selected_node):
+        """Bonus if the truck stays within the KNN zone of its previous node."""
+        if selected_node in self._knn_neighbors[prev_node]:
+            return 0.15  # ~17% of visit_bonus (0.87), same normalized scale
+        return 0.0
 
     def getRewardDistance(self, prev_node, selected_node):
         """

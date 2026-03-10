@@ -21,7 +21,7 @@ class REINFORCEAgent:
         self.policy = FactorizedFleetPolicy(embed_dim=cfg.embed_dim, cfg=cfg, input_features_size=10)
         self.policy.to(cfg.device)
         self.optimizer = optim.Adam(self.policy.parameters(), lr=cfg.lr)
-        self.scheduler = torch.optim.lr_scheduler.StepLR(self.optimizer, step_size=150, gamma=0.5)
+        self.scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(self.optimizer, T_max=cfg.episodes, eta_min=1e-5)
 
         # Buffers for A2C
         self.log_probs = []

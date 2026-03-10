@@ -18,13 +18,13 @@ class Config:
     
     # --- Training ---
     lr: float = 1e-3
-    episodes: int = 500 if not debug else 2
+    episodes: int = 1500 if not debug else 2
     log_interval: int = 20
     gamma: float = 0.99  # Discount factor for rewards (raised from 0.95: terminal fleet-time reward was discounted to ~0 with 492 steps)
     max_extra_steps: int = 10  # Maximum extra steps allowed beyond the number of nodes, to prevent infinite episodes
 
-    entropy_bonus: float = 0.05  # Coefficient for entropy bonus to encourage exploration (raised from 0.01)
-    value_coef: float = 0.1      # Coefficient for critic (value) loss in A2C (lowered from 0.5)
+    entropy_bonus: float = 0.07  # Coefficient for entropy bonus to encourage exploration
+    value_coef: float = 0.1      # Coefficient for critic (value) loss in A2C
     
     def __post_init__(self):
         if self.data_dir == "data_version_2":

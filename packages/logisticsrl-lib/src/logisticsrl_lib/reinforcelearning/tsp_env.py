@@ -123,11 +123,12 @@ class TSPEnv(gym.Env):
             self.inactive_trucks_mask[truck_id] = True  # Mark the selected truck as inactive
         else:
             reward += self.normalized_rewards.getRewardVisitBonus()
-            
+            reward += self.normalized_rewards.getRewardZoneBonus(prev_node, selected_node)
+
             self.fleetStatus.trucklist[truck_id].position = selected_node
-            self.visited_targets[selected_node] = True        
+            self.visited_targets[selected_node] = True
             self.fleetStatus.trucklist[truck_id].tour.append(selected_node)
-            
+
             dist = self.fleetStatus.time_matrix[prev_node, selected_node]
             reward += self.normalized_rewards.getRewardDistance(prev_node, selected_node)
             self.fleetStatus.trucklist[truck_id].total_time += dist

@@ -151,22 +151,23 @@ class GraphPointerPolicy_old(nn.Module):
 class FactorizedFleetPolicy(nn.Module):
     #_SUM_OTHER_DIM = 2
     
-    def __init__(self, cfg, embed_dim=128,input_features_size=10,knn_k=10):
+    def __init__(self, cfg, embed_dim=128,input_features_size=10,knn_k=15):
         super().__init__()
         self.cfg = cfg
 
         self.embed_dim = embed_dim
-        self.knn_k =knn_k
+        self.knn_k = knn_k
+        self._edge_index = None  # cached — coords are constant across steps
         # Feature embedding — initialized at construction so the optimizer tracks it
         self.features = nn.Linear(input_features_size, embed_dim)
-        # self.features = None
         # Simple graph message passing (1 step)
         self.msg_linear = nn.Linear(embed_dim, embed_dim)
+        self.layer_norm = nn.LayerNorm(embed_dim)
 
         # node selector pointer mechanism
         self.query = nn.Linear(embed_dim, embed_dim)
         self.key = nn.Linear(embed_dim, embed_dim)
-        
+
         # truck selector pointer mechanism
         self.truck_query = nn.Linear(embed_dim, embed_dim)
         self.truck_key = nn.Linear(embed_dim, embed_dim)
@@ -223,7 +224,7 @@ class FactorizedFleetPolicy(nn.Module):
         deg = torch.bincount(dst, minlength=h.size(0)).clamp(min=1).unsqueeze(1)
         agg = agg / deg
 
-        out =F.relu(self.msg_linear(agg))
+        out = F.relu(self.msg_linear(self.layer_norm(agg)))
         # apply linear layer + activation
         return h+out
 
@@ -242,9 +243,10 @@ class FactorizedFleetPolicy(nn.Module):
         #    self.features = nn.Linear(input_features_size, self.embed_dim)        
 
         h = self.features(observation_space_as_features)           # [N, D]
-        #Build KNN and do message passing 
-        edge_index = self.build_edge_index(coords)
-        h = self.graph_message_passing(h,edge_index)
+        # Build KNN once and cache — coords are constant
+        if self._edge_index is None:
+            self._edge_index = self.build_edge_index(coords)
+        h = self.graph_message_passing(h, self._edge_index)
         
         #Global graph now
         graph_ctx = h.mean(0)  # [D]
@@ -263,7 +265,7 @@ class FactorizedFleetPolicy(nn.Module):
         tq = self.truck_query(truck_h + graph_ctx) # [T,D]
         tk = self.truck_key(truck_h)               # [T,D]
 
-        truck_scores = torch.matmul(tq, tk.T).diag()  # [T]
+        truck_scores = (tq * tk).sum(-1)  # [T] — element-wise, avoids O(T²) matmul
         truck_scores = truck_scores.masked_fill(inactive_trucks_mask, -1e9)  # Apply truck time mask
         truck_probs = F.softmax(truck_scores, dim=0)  
         
