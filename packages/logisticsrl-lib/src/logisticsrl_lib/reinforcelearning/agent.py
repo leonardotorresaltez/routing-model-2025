@@ -10,14 +10,9 @@ from .policy import FactorizedFleetPolicy
 # ----------------------------
 # REINFORCEAgent 
 # ---------------------------- 
-class REINFORCEAgent:
-
-
-        
+class REINFORCEAgent:    
     def __init__(self, cfg):
         self.cfg = cfg
- 
-        
         self.policy = FactorizedFleetPolicy(embed_dim=cfg.embed_dim, cfg=cfg, input_features_size=10)
         self.policy.to(cfg.device)
         self.optimizer = optim.Adam(self.policy.parameters(), lr=cfg.lr)
@@ -28,8 +23,6 @@ class REINFORCEAgent:
         self.entropies = []
         self.values = []   # V(s_t) from critic
         self.terminal_bonus = 0.0  # fleet_time + coverage, redistributed undiscounted
-
-
 
     def act(self, obs):
 
@@ -50,8 +43,6 @@ class REINFORCEAgent:
             inactive_trucks_mask,
             coords)
         
-
-
         return int(truck), int(node)
         
 
@@ -201,23 +192,6 @@ class REINFORCEAgent:
         ], dim=1)
 
         return enriched_tensor
-
-
-    # def _get_enriched_observation_space(self, obs):
-    #     """
-    #     Concatenate all observation space elements with dimension N into a single tensor.
-    #     """
-    #     is_target = torch.tensor(obs["is_target"], dtype=torch.float32).unsqueeze(1).to(self.cfg.device)  # Ensure Shape: (N, 1)
-    #     visited_targets = torch.tensor(obs["visited_targets"], dtype=torch.float32).unsqueeze(1).to(self.cfg.device)  # Ensure Shape: (N, 1)
-    #     time_matrix = torch.tensor(obs["time_matrix"], dtype=torch.float32).to(self.cfg.device)  # Shape: (N, N)
-
-    #     # Concatenate all tensors with dimension N along the last axis
-    #     enriched_tensor = torch.cat([time_matrix,is_target, visited_targets], dim=1)  # Shape: (N, N+2) if time_matrix is (N, N) and the others are (N, 1)
-
-    #     return enriched_tensor
-    
- 
-    
     
     def _apply_time_constraints_v3(self, obs):
         """
@@ -257,9 +231,7 @@ class REINFORCEAgent:
             masks[truck_id] |= total_times > self.cfg.max_daily_delivery_time_each_truck
 
         return masks        
-        
-     
-                
+                       
         
     def _select_action(self, nodes, truck_positions, visited_enriched, inactive_trucks_mask, coords):
         """
