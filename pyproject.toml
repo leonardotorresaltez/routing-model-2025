@@ -11,7 +11,8 @@ dependencies = [
   # Referenciamos los subproyectos como dependencias
     "common-lib",
     "loader-lib",
-    "logisticsrl-lib"
+    "logisticsrl-lib",
+    "ortools (>=9.15.6755,<10.0.0)"
 ]
 
 
@@ -35,3 +36,4 @@ logisticsrl-lib = { path = "packages/logisticsrl-lib", develop = true }
 [tool.poetry.scripts]
 train = "logisticsrl_lib.main:train"
 benchmarks = "logisticsrl_lib.compute_benchmarks:train"
+benchmarks_2 = "logisticsrl_lib.compute_benchmarks_google_ortools:train"
