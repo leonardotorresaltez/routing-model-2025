@@ -9,14 +9,14 @@ from logisticsrl_lib.reinforcelearning.rewards import NormalizedRewards
 class TSPEnv(gym.Env):
     metadata = {"render_modes": []}
 
-    def __init__(       
+    def __init__(
         self,
         cfg,
         truck_starts,
-        source_mask,    
+        source_mask,
         time_matrix,
-        nodes
-       
+        nodes,
+        knn_neighbors=None
     ):
         super().__init__()
         self.cfg = cfg
@@ -28,7 +28,7 @@ class TSPEnv(gym.Env):
             nodes=nodes
         )
         
-        self.normalized_rewards = NormalizedRewards(cfg,time_matrix)           
+        self.normalized_rewards = NormalizedRewards(cfg, time_matrix, knn_neighbors)
         self.num_nodes = self.fleetStatus.num_nodes()
 
         self.source_mask = self.fleetStatus.source_mask

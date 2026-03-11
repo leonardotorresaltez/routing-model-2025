@@ -12,12 +12,43 @@ from logisticsrl_lib.reinforcelearning.agent import REINFORCEAgent
 from loader_lib.data_loader import FleetStatus, MDVRPDataLoader, TruckState
 from common_lib.evaluation_utils import evaluate_solution
 from common_lib.visualization_utils_plotly import create_routing_graph, visualize_routing_solution
-from logisticsrl_lib.reinforcelearning.rewards import NormalizedRewards
-
 def set_seed(seed):
     torch.manual_seed(seed)
     np.random.seed(seed)
     random.seed(seed)
+
+
+def build_knn(time_matrix: torch.Tensor, knn_k: int, device):
+    """
+    Precompute KNN graph from the travel-time matrix.
+    time_matrix[i, j] = travel time from node i to node j.
+    Returns:
+        edge_index:    [2, E] LongTensor on `device` — used by FactorizedFleetPolicy (GNN)
+        knn_neighbors: list of sets of length N       — used by NormalizedRewards (zone bonus)
+    Both use the same distance metric (travel time), so they reference the same clusters.
+    """
+    dist = time_matrix.float().to(device)               # [N, N]
+    num_nodes = dist.shape[0]
+
+    # Exclude self (diagonal = inf so it's never picked as a neighbor)
+    dist = dist.clone()
+    dist.fill_diagonal_(float('inf'))
+    knn = dist.topk(knn_k, largest=False).indices        # [N, knn_k]
+
+    # edge_index (bidirectional + self-loops)
+    src = torch.arange(num_nodes, device=device).unsqueeze(1).repeat(1, knn_k).reshape(-1)
+    dst = knn.reshape(-1)
+    edge_index = torch.stack([src, dst], dim=0)
+    edge_index = torch.cat([edge_index, edge_index.flip(0)], dim=1)
+    self_loops = torch.arange(num_nodes, device=device)
+    self_loops = torch.stack([self_loops, self_loops], dim=0)
+    edge_index = torch.cat([edge_index, self_loops], dim=1)
+
+    # knn_neighbors: list of sets (CPU, for reward lookup)
+    knn_cpu = knn.cpu().tolist()
+    knn_neighbors = [set(row) for row in knn_cpu]
+
+    return edge_index, knn_neighbors
 
 
 
@@ -43,18 +74,21 @@ def train():
             config=vars(cfg)
         )
 
-    print_verification_info(nodesObjs, data, truck_starts)   
-    
-    
+    print_verification_info(nodesObjs, data, truck_starts)
+
+    # Precompute KNN once — shared by policy (GNN edges) and rewards (zone bonus)
+    edge_index, knn_neighbors = build_knn(data["time_matrix"], knn_k=15, device=cfg.device)
+
     env = TSPEnv(
         cfg=cfg,
         truck_starts=truck_starts,
         source_mask=source_mask,
         time_matrix=data["time_matrix"],
-        nodes=nodes
+        nodes=nodes,
+        knn_neighbors=knn_neighbors
     )
-    
-    agent = REINFORCEAgent(cfg)
+
+    agent = REINFORCEAgent(cfg, edge_index=edge_index)
 
     # Training Loop, tqdm for a nice progress bar    
     pbar = tqdm(range(cfg.episodes))

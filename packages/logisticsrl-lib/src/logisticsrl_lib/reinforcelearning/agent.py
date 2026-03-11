@@ -2,7 +2,6 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 import torch.optim as optim
-from loader_lib.data_loader import FleetStatus
 
 from .policy import FactorizedFleetPolicy
 
@@ -14,11 +13,11 @@ class REINFORCEAgent:
 
 
         
-    def __init__(self, cfg):
+    def __init__(self, cfg, edge_index=None):
         self.cfg = cfg
- 
-        
-        self.policy = FactorizedFleetPolicy(embed_dim=cfg.embed_dim, cfg=cfg, input_features_size=10)
+
+
+        self.policy = FactorizedFleetPolicy(embed_dim=cfg.embed_dim, cfg=cfg, input_features_size=10, edge_index=edge_index)
         self.policy.to(cfg.device)
         self.optimizer = optim.Adam(self.policy.parameters(), lr=cfg.lr)
         self.scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(self.optimizer, T_max=cfg.episodes, eta_min=1e-5)
@@ -71,13 +70,11 @@ class REINFORCEAgent:
         # masking: inactive trucks   
         inactive_trucks_mask = torch.tensor(obs["inactive_trucks_mask"], dtype=torch.bool).to(self.cfg.device)
         
-        coords = torch.tensor(obs["nodes"], dtype=torch.float32, device=self.cfg.device)
         truck, node = self._select_action(
-            observation_space_as_features,  
-            obs["truck_positions"], 
+            observation_space_as_features,
+            obs["truck_positions"],
             visited_enriched_tensor,
-            inactive_trucks_mask,
-            coords)
+            inactive_trucks_mask)
         
 
 
@@ -181,8 +178,8 @@ class REINFORCEAgent:
         inactive_mask = torch.tensor(obs["inactive_trucks_mask"], dtype=torch.float32, device=device)
         truck_times = torch.tensor(obs["truck_times"], dtype=torch.float32, device=device)
         active_ratio = (1.0 - inactive_mask).mean().reshape(1, 1)
-        avg_fleet_time = truck_times.mean().reshape(1, 1)
-        max_fleet_time = truck_times.max().reshape(1, 1)
+        avg_fleet_time = (truck_times.mean() / self.cfg.max_daily_delivery_time_each_truck).reshape(1, 1)
+        max_fleet_time = (truck_times.max() / self.cfg.max_daily_delivery_time_each_truck).reshape(1, 1)
         fleet_stats = torch.cat([active_ratio, avg_fleet_time, max_fleet_time], dim=1).repeat(num_nodes, 1)
 
         # 3. Min distance from any active truck to each node — changes each step
@@ -233,25 +230,25 @@ class REINFORCEAgent:
      
                 
         
-    def _select_action(self, nodes, truck_positions, visited_enriched, inactive_trucks_mask, coords):
+    def _select_action(self, nodes, truck_positions, visited_enriched, inactive_trucks_mask):
         """
         Helper to select the next action or return NO-OP if all nodes are visited.
         """
 
         # Pass the mask to the policy
-        truck_probs, node_probs, value = self.policy(nodes, truck_positions, visited_enriched, inactive_trucks_mask,coords)
+        truck_probs, node_probs, value = self.policy(nodes, truck_positions, visited_enriched, inactive_trucks_mask)
         self.values.append(value)
-        
+
         # ---- sample truck ----
         truck_dist = torch.distributions.Categorical(truck_probs)
         truck = truck_dist.sample()
 
         # ---- sample node for that truck ----
         num_nodes = nodes.shape[0]
-        
-        if torch.allclose(node_probs[truck], torch.full_like(node_probs[truck], node_probs[truck][0].item())):  # Check if all node probabilities for the selected truck are masked (== -1e9)
-            node_probs = torch.zeros(num_nodes + 1, device=nodes.device)  # Create a new tensor for node probabilities
-            node_probs[-1] = 1.0  # Assign probability 1 to the NO-OP action at the last index wich is -1 == num_nodes == NO-OP action
+
+        if visited_enriched[truck].all():  # all nodes masked for this truck → NO-OP
+            node_probs = torch.zeros(num_nodes + 1, device=nodes.device)
+            node_probs[-1] = 1.0
         else:
             node_probs = node_probs[truck]
         
