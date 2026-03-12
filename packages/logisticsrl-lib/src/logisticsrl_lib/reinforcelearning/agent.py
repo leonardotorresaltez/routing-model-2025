@@ -60,22 +60,27 @@ class REINFORCEAgent:
         if len(self.log_probs) == 0:
             self._init_episode_cache(obs)
 
+        device = self.cfg.device
+        # Pre-convert moving parts for this step just once to reduce CPU-GPU sync jitter
+        visited_t = torch.tensor(obs["visited_targets"], dtype=torch.float32, device=device)
+        visited_bool_t = visited_t.bool()
+        inactive_bool_t = torch.tensor(obs["inactive_trucks_mask"], dtype=torch.bool, device=device)
+        truck_positions_t = torch.tensor(obs["truck_positions"], dtype=torch.long, device=device)
+        truck_times_t = torch.tensor(obs["truck_times"], dtype=torch.float32, device=device)
+
         # masking: Calculate valid moves
-        visited_enriched_tensor = self._apply_time_constraints_v3(obs)
+        visited_enriched_tensor = self._apply_time_constraints_v3(visited_bool_t, truck_positions_t, truck_times_t)
         
         # enrich observation space concatenating 
-        observation_space_as_features = self._get_enriched_observation_space(obs)  
-        
-        # masking: inactive trucks   
-        inactive_trucks_mask = torch.tensor(obs["inactive_trucks_mask"], dtype=torch.bool).to(self.cfg.device)
+        observation_space_as_features = self._get_enriched_observation_space(
+            visited_t, inactive_bool_t, truck_times_t, truck_positions_t
+        )  
         
         truck, node = self._select_action(
             observation_space_as_features,
-            obs["truck_positions"],
+            truck_positions_t,
             visited_enriched_tensor,
-            inactive_trucks_mask)
-        
-
+            inactive_bool_t)
 
         return int(truck), int(node)
         
@@ -156,7 +161,7 @@ class REINFORCEAgent:
       
     
     
-    def _get_enriched_observation_space(self, obs):
+    def _get_enriched_observation_space(self, visited_t, inactive_mask_bool, truck_times_t, truck_positions_t):
         """
         Concatenate spatial, status, and fleet context into a fixed-size feature vector.
         Invariants (coords, is_target, home_counts, min_dist_depot) are read from episode cache.
@@ -165,21 +170,19 @@ class REINFORCEAgent:
         num_nodes = self._ep_coords.shape[0]
 
         # 1. Node status — changes each step
-        visited = torch.tensor(obs["visited_targets"], dtype=torch.float32, device=device).unsqueeze(1)
+        visited = visited_t.unsqueeze(1)
 
         # 2. Global Fleet Context (Broadcasted) — changes each step
-        inactive_mask = torch.tensor(obs["inactive_trucks_mask"], dtype=torch.float32, device=device)
-        truck_times = torch.tensor(obs["truck_times"], dtype=torch.float32, device=device)
-        active_ratio = (1.0 - inactive_mask).mean().reshape(1, 1)
-        avg_fleet_time = truck_times.mean().reshape(1, 1)
-        max_fleet_time = truck_times.max().reshape(1, 1)
+        inactive_mask_f = inactive_mask_bool.float()
+        active_ratio = (1.0 - inactive_mask_f).mean().reshape(1, 1)
+        avg_fleet_time = truck_times_t.mean().reshape(1, 1)
+        max_fleet_time = truck_times_t.max().reshape(1, 1)
         fleet_stats = torch.cat([active_ratio, avg_fleet_time, max_fleet_time], dim=1).repeat(num_nodes, 1)
 
         # 3. Min distance from any active truck to each node — changes each step
-        inactive_mask_bool = obs["inactive_trucks_mask"].astype(bool)
-        truck_positions = obs["truck_positions"]
-        active_truck_positions = [truck_positions[i] for i in range(len(truck_positions)) if not inactive_mask_bool[i]]
-        if active_truck_positions:
+        active_idx = (~inactive_mask_bool).nonzero(as_tuple=True)[0]
+        if active_idx.numel() > 0:
+            active_truck_positions = truck_positions_t[active_idx]
             truck_dists = self._ep_time_matrix[active_truck_positions, :]  # [active_T, N]
             min_dist_from_trucks, _ = torch.min(truck_dists, dim=0, keepdim=True)
             min_dist_from_trucks = min_dist_from_trucks.T  # [N, 1]
@@ -202,17 +205,13 @@ class REINFORCEAgent:
 
 
     
-    def _apply_time_constraints_v3(self, obs):
+    def _apply_time_constraints_v3(self, visited_mask_bool, truck_positions_t, truck_times_t):
         """
         Vectorized time constraint masking — no Python loop over trucks.
         Uses episode-cached time_matrix and return_times.
         """
         device = self.cfg.device
-        visited_mask = torch.tensor(obs["visited_targets"], dtype=torch.bool, device=device)
-        masks = visited_mask.unsqueeze(0).expand(len(obs["truck_positions"]), -1).clone()  # [T, N]
-
-        truck_positions_t = torch.tensor(obs["truck_positions"], dtype=torch.long, device=device)  # [T]
-        truck_times_t = torch.tensor(obs["truck_times"], dtype=torch.float32, device=device)        # [T]
+        masks = visited_mask_bool.unsqueeze(0).expand(len(truck_positions_t), -1).clone()  # [T, N]
 
         travel_times = self._ep_time_matrix[truck_positions_t]   # [T, N]
         total_times = truck_times_t.unsqueeze(1) + travel_times + self._ep_return_times  # [T, N]
