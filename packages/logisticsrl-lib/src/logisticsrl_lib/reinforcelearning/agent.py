@@ -135,7 +135,8 @@ class REINFORCEAgent:
         # losses
         
         actor_loss = -(log_probs * advantages).mean()
-        critic_loss = F.mse_loss(values, returns)
+        # Use Huber loss (smooth_l1_loss) instead of MSE to prevent exploding critic gradients
+        critic_loss = F.smooth_l1_loss(values, returns)
         entropy_loss = -entropy.mean()
 
         #Total loss ---
