@@ -37,11 +37,13 @@ class NormalizedRewards:
             return -self.global_mean
         
     def getRewardTotalFleetTime(self, total_fleet_time):
-        # Linear penalty, 3x stronger than the original /86.5 version.
-        # At 1000h: -17.2  →  redistributed to all steps ≈ 26% of mean return (~65).
-        # At  750h:  -8.6  →  ≈ 13% weight.  At 500h: 0.
-        efficiency_reward = -(total_fleet_time - 500) / 29.0
-        return float(np.clip(efficiency_reward, -20.0, 5.0))
+        # Calibrated for 50 trucks, optimal fleet_time ~200-250h.
+        # Zero at 400h (between optimal and current 700-900h range).
+        # Scale 100: full gradient without clipping across [200h, 900h].
+        # Values [-5, +2] keep terminal_bonus ~6x per-step reward (was 35x), avoiding gradient explosion.
+        # At 200h: +2.0  At 250h: +1.5  At 400h: 0  At 700h: -3.0  At 900h: -5.0
+        efficiency_reward = -(total_fleet_time - 400) / 100.0
+        return float(np.clip(efficiency_reward, -5.0, 2.0))
             
 
     def getRewardCoverage(self, n_unvisited):

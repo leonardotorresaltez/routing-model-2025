@@ -104,7 +104,7 @@ class TSPEnv(gym.Env):
             "visited_targets": self.visited_targets.astype(np.int8),
             "truck_positions": self.fleetStatus.truck_positions().copy(), #copy to avoid reference issues
             "inactive_trucks_mask": self.inactive_trucks_mask.cpu().numpy(),
-            "time_matrix": self.fleetStatus.time_matrix.float(),
+            "time_matrix": self.fleetStatus.time_matrix.float().numpy(),
             "truck_starts": self.fleetStatus.truck_starts.copy(),
             "truck_times": self.fleetStatus.truck_times().copy(),
         }
@@ -145,7 +145,7 @@ class TSPEnv(gym.Env):
             coverage_reward = self.normalized_rewards.getRewardCoverage(n_unvisited)
             terminal_bonus = fleet_time_reward + coverage_reward
             # terminal_bonus is NOT added to reward here — passed via info so
-            # the agent can add it to ALL steps (undiscounted), bypassing gamma^492 attenuation.
+            # the agent adds it to the last reward before computing discounted returns.
 
         return self._get_obs(), reward, done, terminated, {"terminal_bonus": terminal_bonus}
 

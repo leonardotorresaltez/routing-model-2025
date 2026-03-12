@@ -1,4 +1,3 @@
-import numpy as np
 import torch
 import torch.nn.functional as F
 import torch.optim as optim
@@ -103,47 +102,41 @@ class REINFORCEAgent:
         assert n_probs == n_rewards, \
             f"MISALIGNMENT DETECTED! You have {n_probs} actions but {n_rewards} rewards."
 
-        # --- 1. Compute discounted returns G_t (backward) ---
+
+        # Apply terminal bonus to last reward
+        if len(self.rewards) > 0:
+            self.rewards[-1] += self.terminal_bonus
+        self.terminal_bonus = 0.0
+
         R = 0
         returns = []
         for r in reversed(self.rewards):
             R = r + self.cfg.gamma * R
             returns.insert(0, R)
-
         returns = torch.tensor(returns, dtype=torch.float32).to(self.cfg.device)
-
-        # --- 1b. Redistribute terminal bonus to ALL steps (undiscounted) ---
-        # Terminal rewards (fleet_time + coverage) discounted over 492 steps contribute
-        # only gamma^492 ≈ 0.007 to G_0 — effectively invisible.
-        # By adding the terminal bonus uniformly to every G_t, the fleet time signal
-        # is present at every step, enabling credit assignment across the episode.
-        returns = returns + self.terminal_bonus
-        self.terminal_bonus = 0.0
-
-        # --- 2. Advantages A_t = G_t - V(s_t) (escala original) ---
+        
+        
+        # Stack stored tensors 
         values = torch.stack(self.values).to(self.cfg.device)    # [T]
+        log_probs = torch.stack(self.log_probs).to(self.cfg.device)        
+        entropy = torch.stack(self.entropies).to(self.cfg.device)
+        
+        
+        #advantages
         advantages = returns - values.detach()
-
-        # Normalizar VENTAJAS (no returns): mantiene el policy gradient en escala controlada
-        # independientemente de cuán equivocado esté el crítico en este momento
         advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-9)
+        
 
-        # --- 3. Policy loss: mean (no sum) → gradientes independientes del largo del episodio ---
-        policy_loss = torch.stack(
-            [-lp * adv for lp, adv in zip(self.log_probs, advantages)]
-        ).mean()
+        # losses
+        
+        actor_loss = -(log_probs * advantages).mean()
+        critic_loss = F.mse_loss(values, returns)
+        entropy_loss = -entropy.mean()
 
-        # --- 4. Value loss: MSE(V(s_t), G_t normalizado) ---
-        returns_norm = (returns - returns.mean()) / (returns.std() + 1e-9)
-        value_loss = F.mse_loss(values, returns_norm)
-
-        # --- 5. Entropy bonus ---
-        entropy_loss = torch.stack(self.entropies).mean()
-
-        # --- 6. Total loss ---
-        loss = (policy_loss
-                + self.cfg.value_coef * value_loss
-                - self.cfg.entropy_bonus * entropy_loss)
+        #Total loss ---
+        loss = (actor_loss
+                + self.cfg.value_coef * critic_loss
+                + self.cfg.entropy_bonus * entropy_loss)
 
         self.optimizer.zero_grad()
         loss.backward()
@@ -178,8 +171,8 @@ class REINFORCEAgent:
         inactive_mask = torch.tensor(obs["inactive_trucks_mask"], dtype=torch.float32, device=device)
         truck_times = torch.tensor(obs["truck_times"], dtype=torch.float32, device=device)
         active_ratio = (1.0 - inactive_mask).mean().reshape(1, 1)
-        avg_fleet_time = (truck_times.mean() / self.cfg.max_daily_delivery_time_each_truck).reshape(1, 1)
-        max_fleet_time = (truck_times.max() / self.cfg.max_daily_delivery_time_each_truck).reshape(1, 1)
+        avg_fleet_time = truck_times.mean().reshape(1, 1)
+        max_fleet_time = truck_times.max().reshape(1, 1)
         fleet_stats = torch.cat([active_ratio, avg_fleet_time, max_fleet_time], dim=1).repeat(num_nodes, 1)
 
         # 3. Min distance from any active truck to each node — changes each step

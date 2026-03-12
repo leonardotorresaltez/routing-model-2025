@@ -156,7 +156,7 @@ class FactorizedFleetPolicy(nn.Module):
         self.cfg = cfg
 
         self.embed_dim = embed_dim
-        self._edge_index = edge_index  # precomputed from main.py; fallback builds on first forward
+        self.register_buffer('_edge_index', edge_index)  # moves with model.to(device)
         # Feature embedding — initialized at construction so the optimizer tracks it
         self.features = nn.Linear(input_features_size, embed_dim)
         # Simple graph message passing (1 step)
