@@ -17,7 +17,7 @@ class Config:
     max_daily_delivery_time_each_truck: int = 24  # hours
     
     # --- Training ---
-    lr: float = 1e-3
+    lr: float = 1e-4
     episodes: int = 500 if not debug else 2
     log_interval: int = 20
     gamma: float = 0.99  # Discount factor for rewards (raised from 0.95: terminal fleet-time reward was discounted to ~0 with 492 steps)
