@@ -20,7 +20,20 @@ class REINFORCEAgent:
         
         self.policy = FactorizedFleetPolicy(embed_dim=cfg.embed_dim, cfg=cfg, input_features_size=10)
         self.policy.to(cfg.device)
+        
+        # Apply torch.compile if available (PyTorch 2.0+)
+        if hasattr(torch, "compile") and cfg.device == "cuda":
+            try:
+                self.policy = torch.compile(self.policy)
+                print("DEBUG: Policy compiled with torch.compile")
+            except Exception as e:
+                print(f"DEBUG: torch.compile failed: {e}")
+
         self.optimizer = optim.Adam(self.policy.parameters(), lr=cfg.lr)
+        self.scaler = torch.amp.GradScaler('cuda') if cfg.device == 'cuda' else None
+        
+        # Cache for tensors that don't change frequently during act()
+        self._time_matrix_gpu = None
         
         # Buffers for A2C
         self.log_probs = []
@@ -101,27 +114,58 @@ class REINFORCEAgent:
         # independientemente de cuán equivocado esté el crítico en este momento
         advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-9)
 
-        # --- 3. Policy loss: mean (no sum) → gradientes independientes del largo del episodio ---
-        policy_loss = torch.stack(
-            [-lp * adv for lp, adv in zip(self.log_probs, advantages)]
-        ).mean()
-
-        # --- 4. Value loss: MSE(V(s_t), G_t normalizado) ---
-        returns_norm = (returns - returns.mean()) / (returns.std() + 1e-9)
-        value_loss = F.mse_loss(values, returns_norm)
-
-        # --- 5. Entropy bonus ---
-        entropy_loss = torch.stack(self.entropies).mean()
-
-        # --- 6. Total loss ---
-        loss = (policy_loss
-                + self.cfg.value_coef * value_loss
-                - self.cfg.entropy_bonus * entropy_loss)
-
+        # --- 3, 4, 5. Compute losses with AMP if available ---
         self.optimizer.zero_grad()
-        loss.backward()
-        grad_norm = torch.nn.utils.clip_grad_norm_(self.policy.parameters(), max_norm=1.0)
-        self.optimizer.step()
+        
+        if self.scaler:
+            with torch.amp.autocast('cuda'):
+                # Policy loss: mean (no sum) → gradientes independientes del largo del episodio
+                policy_loss = torch.stack(
+                    [-lp * adv for lp, adv in zip(self.log_probs, advantages)]
+                ).mean()
+
+                # Value loss: MSE(V(s_t), G_t normalizado)
+                ret_mean = returns.mean()
+                ret_std = returns.std()
+                returns_norm = (returns - ret_mean) / (ret_std + 1e-9)
+                value_loss = F.mse_loss(values, returns_norm)
+
+                # Entropy bonus
+                entropy_loss = torch.stack(self.entropies).mean()
+
+                # Total loss
+                loss = (policy_loss
+                        + self.cfg.value_coef * value_loss
+                        - self.cfg.entropy_bonus * entropy_loss)
+            
+            self.scaler.scale(loss).backward()
+            self.scaler.unscale_(self.optimizer)
+            grad_norm = torch.nn.utils.clip_grad_norm_(self.policy.parameters(), max_norm=1.0)
+            self.scaler.step(self.optimizer)
+            self.scaler.update()
+        else:
+            # Policy loss
+            policy_loss = torch.stack(
+                [-lp * adv for lp, adv in zip(self.log_probs, advantages)]
+            ).mean()
+
+            # Value loss: MSE(V(s_t), G_t normalizado)
+            ret_mean = returns.mean()
+            ret_std = returns.std()
+            returns_norm = (returns - ret_mean) / (ret_std + 1e-9)
+            value_loss = F.mse_loss(values, returns_norm)
+
+            # Entropy bonus
+            entropy_loss = torch.stack(self.entropies).mean()
+
+            # Total loss
+            loss = (policy_loss
+                    + self.cfg.value_coef * value_loss
+                    - self.cfg.entropy_bonus * entropy_loss)
+
+            loss.backward()
+            grad_norm = torch.nn.utils.clip_grad_norm_(self.policy.parameters(), max_norm=1.0)
+            self.optimizer.step()
 
         # Clear buffers
         self.log_probs.clear()
@@ -143,16 +187,16 @@ class REINFORCEAgent:
         device = self.cfg.device
         
         # 1. Coordinates (Spatial information) - Shape: [N, 2]
-        coords = torch.tensor(obs["nodes"], dtype=torch.float32, device=device)
+        coords = torch.as_tensor(obs["nodes"], dtype=torch.float32, device=device)
         num_nodes = coords.shape[0]
 
         # 2. Node Status - Shape: [N, 1] each
-        is_target = torch.tensor(obs["is_target"], dtype=torch.float32, device=device).unsqueeze(1)
-        visited = torch.tensor(obs["visited_targets"], dtype=torch.float32, device=device).unsqueeze(1)
+        is_target = torch.as_tensor(obs["is_target"], dtype=torch.float32, device=device).unsqueeze(1)
+        visited = torch.as_tensor(obs["visited_targets"], dtype=torch.float32, device=device).unsqueeze(1)
 
         # 3. Global Fleet Context (Broadcasted) - Shape: [N, 3]
-        inactive_mask = torch.tensor(obs["inactive_trucks_mask"], dtype=torch.float32, device=device)
-        truck_times = torch.tensor(obs["truck_times"], dtype=torch.float32, device=device)
+        inactive_mask = torch.as_tensor(obs["inactive_trucks_mask"], dtype=torch.float32, device=device)
+        truck_times = torch.as_tensor(obs["truck_times"], dtype=torch.float32, device=device)
         
         active_ratio = (1.0 - inactive_mask).mean().reshape(1, 1)
         avg_fleet_time = truck_times.mean().reshape(1, 1)
@@ -169,7 +213,10 @@ class REINFORCEAgent:
             home_counts[start_idx] += 1
             
         # Feature: Proximity to safety (Distance to nearest depot)
-        time_matrix = torch.tensor(obs["time_matrix"], dtype=torch.float32, device=device)
+        if self._time_matrix_gpu is None:
+            self._time_matrix_gpu = torch.as_tensor(obs["time_matrix"], dtype=torch.float32, device=device)
+        
+        time_matrix = self._time_matrix_gpu
         depot_indices = list(set(truck_starts))
         dist_to_depots = time_matrix[:, depot_indices]
         min_dist_to_depot, _ = torch.min(dist_to_depots, dim=1, keepdim=True)
@@ -266,7 +313,12 @@ class REINFORCEAgent:
         """
 
         # Pass the mask to the policy
-        truck_probs, node_probs, value = self.policy(nodes, truck_positions, visited_enriched, inactive_trucks_mask)
+        if self.scaler:
+            with torch.amp.autocast('cuda'):
+                truck_probs, node_probs, value = self.policy(nodes, truck_positions, visited_enriched, inactive_trucks_mask)
+        else:
+            truck_probs, node_probs, value = self.policy(nodes, truck_positions, visited_enriched, inactive_trucks_mask)
+        
         self.values.append(value)
         
         # ---- sample truck ----
