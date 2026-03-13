@@ -18,7 +18,7 @@ class Config:
     
     # --- Training ---
     lr: float = 1e-4
-    episodes: int = 500 if not debug else 2
+    episodes: int = 1500 if not debug else 2
     log_interval: int = 20
     gamma: float = 0.99  # Discount factor for rewards (raised from 0.95: terminal fleet-time reward was discounted to ~0 with 492 steps)
     max_extra_steps: int = 10  # Maximum extra steps allowed beyond the number of nodes, to prevent infinite episodes
