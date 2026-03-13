@@ -2,61 +2,60 @@ import gymnasium as gym
 import numpy as np
 
 class NormalizedRewards:
-    def __init__(self, cfg,time_matrix):
-       
+    def __init__(self, cfg, time_matrix):
         self.cfg = cfg
         self.time_matrix = time_matrix
         mask = time_matrix > 0
-        self.global_mean = time_matrix[mask].mean().item()
-        self.global_std = time_matrix[mask].std().item() 
-        self.global_max = time_matrix[mask].max().item()
-        self.global_min = time_matrix[mask].min().item()
-
-        print(f"Global time matrix stats: mean={   self.global_mean:.2f}, std={self.global_std:.2f}, min={self.global_min:.2f}, max={self. global_max:.2f}")
-
- 
-    
-    def getRewardVisitBonus(self):
-        base_reward = (0 - (-self.global_mean)) / self.global_std # aprox 0.87
-        if (self.cfg.data_dir == "data_version_2" ):
-            return 0.87
-        if (self.cfg.data_dir == "data_version_1" ):    
-            return 0.72
+        if mask.any():
+            self.global_mean = time_matrix[mask].mean().item()
+            self.global_std = time_matrix[mask].std().item() 
+            self.global_max = time_matrix[mask].max().item()
+            self.global_min = time_matrix[mask].min().item()
         else:
-            return self.global_mean / self.global_std
+            self.global_mean = 0.0
+            self.global_std = 1.0
+            self.global_max = 0.0
+            self.global_min = 0.0
+
+        if self.global_std == 0:
+            self.global_std = 1.0
+
+        print(f"Global time matrix stats: mean={self.global_mean:.2f}, std={self.global_std:.2f}, min={self.global_min:.2f}, max={self.global_max:.2f}")
+
+    def getRewardVisitBonus(self):
+        """
+        Reward for visiting a customer. 
+        Scaled to the average move cost (global_mean / global_std).
+        """
+        return self.global_mean / self.global_std
         
     def getRewardNonOP(self):
-        base_reward = (13.77 - (-self.global_mean)) / self.global_std # aprox 0.87
-        if (self.cfg.data_dir == "data_version_2" ):
-            return - 1.5  # reduced from -3.0: trucks can now retire when remaining visits are inefficient
-        if (self.cfg.data_dir == "data_version_1" ):    
-            return - 2.5
-        else:
-            return -self.global_mean
+        """
+        Small penalty for a truck being retired (NO-OP).
+        Relative to the visit bonus scale.
+        """
+        base_unit = self.global_mean / self.global_std
+        return -0.2 * base_unit
         
     def getRewardTotalFleetTime(self, total_fleet_time):
-        # Linear penalty, 3x stronger than the original /86.5 version.
-        # At 1000h: -17.2  →  redistributed to all steps ≈ 26% of mean return (~65).
-        # At  750h:  -8.6  →  ≈ 13% weight.  At 500h: 0.
-        efficiency_reward = -(total_fleet_time - 500) / 29.0
-        return float(np.clip(efficiency_reward, -20.0, 5.0))
-            
+        """
+        Terminal penalty for total time spent by all trucks.
+        Normalized by global_std to stay in the same scale as other rewards.
+        """
+        return -0.1 * (total_fleet_time / self.global_std)
 
     def getRewardCoverage(self, n_unvisited):
         """
         Terminal penalty for each customer left unvisited.
-        Normalized with the same base as visit_bonus (global_mean / global_std ≈ 0.87),
-        so each unvisited customer costs exactly -1 normalized unit (same scale as other rewards).
+        Stronger scale than the visit bonus to ensure customers are prioritized.
         """
-        penalty_per_customer = self.global_mean / self.global_std  # ≈ 0.87, same scale as visit bonus
+        penalty_per_customer = 1.5 * (self.global_mean / self.global_std)
         return -n_unvisited * penalty_per_customer
 
     def getRewardDistance(self, prev_node, selected_node):
         """
-        'reward' es el valor crudo que sale de tu env (ej: -time_matrix[u,v]).
+        Cost of moving between two nodes.
+        Normalized to ensure the average move has a cost around -mean/std.
         """
-        reward = self.time_matrix[prev_node, selected_node].item()  
-
-        norm_reward =  (reward - self.global_mean) / self.global_std
-
-        return - norm_reward
+        dist = self.time_matrix[prev_node, selected_node].item()  
+        return -(dist / self.global_std)
