@@ -9,14 +9,14 @@ from logisticsrl_lib.reinforcelearning.rewards import NormalizedRewards
 class TSPEnv(gym.Env):
     metadata = {"render_modes": []}
 
-    def __init__(       
+    def __init__(
         self,
         cfg,
         truck_starts,
-        source_mask,    
+        source_mask,
         time_matrix,
-        nodes
-       
+        nodes,
+        knn_neighbors=None
     ):
         super().__init__()
         self.cfg = cfg
@@ -28,7 +28,7 @@ class TSPEnv(gym.Env):
             nodes=nodes
         )
         
-        self.normalized_rewards = NormalizedRewards(cfg,time_matrix)           
+        self.normalized_rewards = NormalizedRewards(cfg, time_matrix, knn_neighbors)
         self.num_nodes = self.fleetStatus.num_nodes()
 
         self.source_mask = self.fleetStatus.source_mask
@@ -104,7 +104,7 @@ class TSPEnv(gym.Env):
             "visited_targets": self.visited_targets.astype(np.int8),
             "truck_positions": self.fleetStatus.truck_positions().copy(), #copy to avoid reference issues
             "inactive_trucks_mask": self.inactive_trucks_mask.cpu().numpy(),
-            "time_matrix": self.fleetStatus.time_matrix.float(),
+            "time_matrix": self.fleetStatus.time_matrix.float().numpy(),
             "truck_starts": self.fleetStatus.truck_starts.copy(),
             "truck_times": self.fleetStatus.truck_times().copy(),
         }
@@ -123,11 +123,12 @@ class TSPEnv(gym.Env):
             self.inactive_trucks_mask[truck_id] = True  # Mark the selected truck as inactive
         else:
             reward += self.normalized_rewards.getRewardVisitBonus()
-            
+            reward += self.normalized_rewards.getRewardZoneBonus(prev_node, selected_node)
+
             self.fleetStatus.trucklist[truck_id].position = selected_node
-            self.visited_targets[selected_node] = True        
+            self.visited_targets[selected_node] = True
             self.fleetStatus.trucklist[truck_id].tour.append(selected_node)
-            
+
             dist = self.fleetStatus.time_matrix[prev_node, selected_node]
             reward += self.normalized_rewards.getRewardDistance(prev_node, selected_node)
             self.fleetStatus.trucklist[truck_id].total_time += dist
@@ -144,7 +145,7 @@ class TSPEnv(gym.Env):
             coverage_reward = self.normalized_rewards.getRewardCoverage(n_unvisited)
             terminal_bonus = fleet_time_reward + coverage_reward
             # terminal_bonus is NOT added to reward here — passed via info so
-            # the agent can add it to ALL steps (undiscounted), bypassing gamma^492 attenuation.
+            # the agent adds it to the last reward before computing discounted returns.
 
         return self._get_obs(), reward, done, terminated, {"terminal_bonus": terminal_bonus}
 

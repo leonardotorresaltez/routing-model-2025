@@ -147,25 +147,26 @@ class GraphPointerPolicy_old(nn.Module):
 
 # ----------------------------
 # FactorizedFleetPolicy Policy Model
-# ----------------------------    
+# ----------------------------
 class FactorizedFleetPolicy(nn.Module):
     #_SUM_OTHER_DIM = 2
-    
-    def __init__(self, cfg, embed_dim=128,input_features_size=10):
+
+    def __init__(self, cfg, embed_dim=128, input_features_size=10, edge_index=None):
         super().__init__()
         self.cfg = cfg
 
         self.embed_dim = embed_dim
+        self.register_buffer('_edge_index', edge_index)  # moves with model.to(device)
         # Feature embedding — initialized at construction so the optimizer tracks it
         self.features = nn.Linear(input_features_size, embed_dim)
-        # self.features = None
         # Simple graph message passing (1 step)
         self.msg_linear = nn.Linear(embed_dim, embed_dim)
+        self.layer_norm = nn.LayerNorm(embed_dim)
 
         # node selector pointer mechanism
         self.query = nn.Linear(embed_dim, embed_dim)
         self.key = nn.Linear(embed_dim, embed_dim)
-        
+
         # truck selector pointer mechanism
         self.truck_query = nn.Linear(embed_dim, embed_dim)
         self.truck_key = nn.Linear(embed_dim, embed_dim)
@@ -176,7 +177,26 @@ class FactorizedFleetPolicy(nn.Module):
             nn.ReLU(),
             nn.Linear(embed_dim, 1)
         )        
+    # ----------------------------
+    # Graph message passing
+    # ----------------------------
+    def graph_message_passing(self,h,edge_index):
+        src,dst=edge_index
+        messages = h[src]
+        
+        #sum messages into each node
+        agg = torch.zeros_like(h)
+        agg.index_add_(0,dst,messages)
+        
+        # normalize by degree (VERY IMPORTANT)
+        deg = torch.bincount(dst, minlength=h.size(0)).clamp(min=1).unsqueeze(1)
+        agg = agg / deg
 
+        out = F.relu(self.msg_linear(self.layer_norm(agg)))
+        # apply linear layer + activation
+        return h+out
+
+         
     def forward(self, observation_space_as_features: torch.Tensor, truck_positions: np.array, visited_mask: torch.Tensor, inactive_trucks_mask: torch.Tensor):
         """
         observation_space_as_features: [N, size_dim]
@@ -191,16 +211,26 @@ class FactorizedFleetPolicy(nn.Module):
         #    self.features = nn.Linear(input_features_size, self.embed_dim)        
 
         h = self.features(observation_space_as_features)           # [N, D]
-        truck_h = h[truck_positions] 
+        h = self.graph_message_passing(h, self._edge_index)
+        
+        #Global graph now
+        graph_ctx = h.mean(0)  # [D]
+        
+        #Truck Embeddings
+        if isinstance(truck_positions,torch.Tensor):
+            truck_pos_tensor = truck_positions.to(h.device)
+        else:
+            truck_pos_tensor = torch.tensor(truck_positions,device=h.device, dtype=torch.long)
+        truck_h = h[truck_pos_tensor] 
 
         visited_mask = visited_mask.bool()
-        graph_ctx = self.msg_linear(h.mean(0))  # [D]
+       
 
         # ---------- TRUCK SELECTION ----------
         tq = self.truck_query(truck_h + graph_ctx) # [T,D]
         tk = self.truck_key(truck_h)               # [T,D]
 
-        truck_scores = torch.matmul(tq, tk.T).diag()  # [T]
+        truck_scores = (tq * tk).sum(-1)  # [T] — element-wise, avoids O(T²) matmul
         truck_scores = truck_scores.masked_fill(inactive_trucks_mask, -1e9)  # Apply truck time mask
         truck_probs = F.softmax(truck_scores, dim=0)  
         

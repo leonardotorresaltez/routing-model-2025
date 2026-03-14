@@ -1,18 +1,18 @@
-import gymnasium as gym
-import numpy as np
 
 class NormalizedRewards:
-    def __init__(self, cfg,time_matrix):
-       
+    def __init__(self, cfg, time_matrix, knn_neighbors):
+
         self.cfg = cfg
         self.time_matrix = time_matrix
         mask = time_matrix > 0
         self.global_mean = time_matrix[mask].mean().item()
-        self.global_std = time_matrix[mask].std().item() 
+        self.global_std = time_matrix[mask].std().item()
         self.global_max = time_matrix[mask].max().item()
         self.global_min = time_matrix[mask].min().item()
 
-        print(f"Global time matrix stats: mean={   self.global_mean:.2f}, std={self.global_std:.2f}, min={self.global_min:.2f}, max={self. global_max:.2f}")
+        print(f"Global time matrix stats: mean={self.global_mean:.2f}, std={self.global_std:.2f}, min={self.global_min:.2f}, max={self.global_max:.2f}")
+
+        self._knn_neighbors = knn_neighbors
 
  
     
@@ -35,11 +35,10 @@ class NormalizedRewards:
             return -self.global_mean
         
     def getRewardTotalFleetTime(self, total_fleet_time):
-        # Linear penalty, 3x stronger than the original /86.5 version.
-        # At 1000h: -17.2  →  redistributed to all steps ≈ 26% of mean return (~65).
-        # At  750h:  -8.6  →  ≈ 13% weight.  At 500h: 0.
-        efficiency_reward = -(total_fleet_time - 500) / 29.0
-        return float(np.clip(efficiency_reward, -20.0, 5.0))
+        # Step 1: raw efficiency value (0 at target 200h, negative above, positive below)
+        raw = -(total_fleet_time - 200) / 100.0
+        # Step 2: normalize to getRewardDistance scale: (x - global_mean) / global_std
+        return float((raw - self.global_mean) / self.global_std)
             
 
     def getRewardCoverage(self, n_unvisited):
@@ -50,6 +49,12 @@ class NormalizedRewards:
         """
         penalty_per_customer = self.global_mean / self.global_std  # ≈ 0.87, same scale as visit bonus
         return -n_unvisited * penalty_per_customer
+
+    def getRewardZoneBonus(self, prev_node, selected_node):
+        """Bonus if the truck stays within the KNN zone of its previous node."""
+        if selected_node in self._knn_neighbors[prev_node]:
+            return 0.15  # ~17% of visit_bonus (0.87), same normalized scale
+        return 0.0
 
     def getRewardDistance(self, prev_node, selected_node):
         """
