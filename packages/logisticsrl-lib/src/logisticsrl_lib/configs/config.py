@@ -5,7 +5,7 @@ from dataclasses import dataclass
 class Config:
     # --- Experiment ---
     project_name: str = "routing-model-2025"
-    run_name: str = "default"
+    run_name: str = "pointer_network"
     seed: int = 42
     device: str = "cpu"
     wandb: bool = False  # Toggle W&B logging
@@ -34,8 +34,6 @@ class Config:
         
         # Construct project_name
         self.project_name = f"{self.project_name}_{self.data_dir}"
-        # Construct Run Name
-        self.run_name = f"lr{self.lr}_gamma{self.gamma}_sd{self.seed}"
 
 def parse_args() -> Config:
     base_cfg = Config()
