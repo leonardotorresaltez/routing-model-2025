@@ -60,11 +60,11 @@ def train():
     pbar = tqdm(range(cfg.episodes))
     print(f"--> STARTING RUN: {cfg.run_name}")
     print("episode is=", cfg.episodes)
+    max_reward = -float('inf')
     for episode in pbar:
         obs, _ = env.reset()
         done, terminated = False, False
         episode_reward = 0.0
-        max_reward = -float('inf')
 
         while not (done or terminated):
             action = agent.act(obs)
