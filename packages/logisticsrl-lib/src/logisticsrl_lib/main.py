@@ -64,7 +64,7 @@ def train():
         obs, _ = env.reset()
         done, terminated = False, False
         episode_reward = 0.0
-
+        max_reward = -float('inf')
 
         while not (done or terminated):
             action = agent.act(obs)
@@ -82,17 +82,24 @@ def train():
 
         loss, entropy, grad_norm, mean_normalized_return = agent.update()
 
-        report_every_50_episodes(
-            episode,
-            episode_reward,
-            loss,
-            total_time,
-            total_destinations_visited,
-            pct_intersections,
-            env,
-            data,
-            truck_starts,
-            pbar)
+        final_reward = total_destinations_visited - total_time/20
+        if final_reward > max_reward:
+            max_reward = final_reward
+            print(f"New best solution found! Total reward: {final_reward:.2f}, Total time: {total_time:.2f}, Total destinations visited: {total_destinations_visited}, Percentage of intersections: {pct_intersections:.2f}%")
+            report(
+                episode,
+                episode_reward,
+                loss,
+                total_time,
+                total_destinations_visited,
+                pct_intersections,
+                env,
+                data,
+                truck_starts,
+                pbar,
+                cfg,
+                agent
+            )
              
                         
 
@@ -120,7 +127,7 @@ def train():
     if cfg.wandb:
         wandb.finish()
 
-def report_every_50_episodes(
+def report(
     episode,
     episode_reward,
     loss,
@@ -130,33 +137,39 @@ def report_every_50_episodes(
     env,
     data,
     truck_starts,
-    pbar
+    pbar,
+    cfg,
+    agent
 ):
-    if episode % 50 == 0:
-        print(
-            f"Episode {episode:4d} | "
-            f"Total reward: {episode_reward:.3f} | "
-            f"last Loss: {loss:.4f} | "
-        )
-        print("Total time: ", total_time)
-        print("Total destinations visited: ", total_destinations_visited)
-        print("Percentage of intersections: ", pct_intersections)
-        pbar.write("\n--- Sample Route Plan ---")
-        # total time and tour for each truck
-        for i, truck_state in env.fleetStatus.trucklist.items():
-            print(f"Truck {i}: total time = {truck_state.total_time:.2f}, tour = {truck_state.tour}")
-        pbar.write("-------------------------\n")
+    
+    print(
+        f"Episode {episode:4d} | "
+        f"Total reward: {episode_reward:.3f} | "
+        f"last Loss: {loss:.4f} | "
+    )
+    print("Total time: ", total_time)
+    print("Total destinations visited: ", total_destinations_visited)
+    print("Percentage of intersections: ", pct_intersections)
+    pbar.write("\n--- Sample Route Plan ---")
+    # total time and tour for each truck
+    for i, truck_state in env.fleetStatus.trucklist.items():
+        print(f"Truck {i}: total time = {truck_state.total_time:.2f}, tour = {truck_state.tour}")
+    pbar.write("-------------------------\n")
 
-        for customer in data["customers"]:
-            if customer.idx in [node for tour in env.fleetStatus.all_tours() for node in tour]:
-                customer.delivered = True
-            else:
-                customer.delivered = False 
+    for customer in data["customers"]:
+        if customer.idx in [node for tour in env.fleetStatus.all_tours() for node in tour]:
+            customer.delivered = True
+        else:
+            customer.delivered = False 
 
-        # Visualization
-        G = create_routing_graph(data["depots"], data["customers"], env.fleetStatus.all_tours(), truck_starts)
-        visualize_routing_solution(G, step=episode, title_suffix="Final step", save_path=f"checkpoints/visualization_episode{episode}.html")
+    # Visualization
+    G = create_routing_graph(data["depots"], data["customers"], env.fleetStatus.all_tours(), truck_starts)
+    visualize_routing_solution(G, step=episode, title_suffix="Final step", save_path=f"checkpoints/visualization_episode{episode}.html")
 
+    # Save model:
+    path = f"checkpoints/{cfg.run_name}_best.pt"
+    torch.save(agent.policy.state_dict(), path)
+    print(f"--> SAVED BEST MODEL: {path}")
 
 def print_verification_info(nodesObjs, data, truck_starts):
     print("\n" + "="*40)
