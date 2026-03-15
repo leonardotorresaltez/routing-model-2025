@@ -229,7 +229,7 @@ OR-Tools allows setting search limits, such as global time limits, to keep the b
 
 ---
 
-### Experiment 2: REINFORCE
+### Experiment 2: Policy pointer network
 
 #### Hypothesis
 
@@ -262,7 +262,7 @@ A minimal 10-customer, 2-truck instance is a good debugging and proof-of-concept
 
 ---
 
-### Experiment 3: A2C
+### Experiment 3: Policy pointer network + A2C (`main` branch)
 
 #### Hypothesis
 
@@ -296,11 +296,23 @@ The A2C agent (with critic baseline) should converge faster and achieve better s
 
 ---
 
-### Experiment 4: A2C + GNN (`main` branch)
+### Experiment 4: Policy pointer network + A2C + KNN_GNN 
 
 #### Hypothesis
 
-The multi-depot, large-scale instance (`data_version_2`: 500 customers, 5 depots, 50 trucks) is the target production scenario. The hypothesis is that the GNN layer, by propagating neighborhood information through the KNN graph, enables the policy to make globally-informed routing decisions — something the greedy baseline cannot do.
+The multi-depot, large-scale instance (data_version_2: 500 customers, 5 depots, 50 trucks) represents the target production scenario.
+
+**Step 1:**
+Construct a KNN graph where each node is connected to its N = 15 nearest neighbors. This effectively forms local clusters in which each node belongs to a group of nearby nodes (customers or depots) based on time-distance.
+
+**Step 2:**
+Build a GNN-based context using the edge_index derived from the KNN graph. Through message passing, each node aggregates information from its closest neighbors. Node features (derived from the observation space) are incorporated into the node embeddings during this process.
+
+**Step 3:**
+Apply a pointer network (dot product attention) that uses the GNN context to compute the probability distribution over possible truck selections and node destinations.
+
+**Step 4:**
+Compute the critic value to estimate the expected return of the current state.
 
 The factorized fleet action space (select truck, then select node) should remain tractable even with 50 trucks and 500 customers.
 
@@ -311,27 +323,30 @@ Additionally, adding a small **zone bonus** (+0.15) when a truck visits a node w
 #### Experiment Setup
 
 - **Data**: `data_version_2` — 500 customers, 5 depots, 50 trucks, 24h limit.
-- **Algorithm**: A2C with `FactorizedFleetPolicy`.
-- **GNN**: 1-step message passing over KNN graph (k=15), built from the travel time matrix.
-- **Action masking**: Both visited-node mask and time-constraint mask (vectorized, no Python loop over trucks).
+- **Algorithm**: pointer network + A2C + KNN_GNN  with `FactorizedFleetPolicy`.
+- **GNN**: 1-step message passing over KNN graph (k=15), built from the travel time matrix ( matrix to get time-distances from x => y )
+- **Action masking**: inactive-trucks (trucks with completed work), visited-node and time-constraint mask (vectorized, no Python loop over trucks).
 - **Hyperparameters**: `lr=1e-3`, `gamma=0.99`, `episodes=1000`, `embed_dim=128`, `max_extra_steps=10`,`entropy_bonus=0.07`, `value_coef=0.1`
 - **Final reward**: 
 
-| Condition | Reward |
-|---|---|
-| Raw rewards | `r = -(travel_time)` |
-| Normalized rewards | `r = -(travel_time - μ) / σ` + visit bonus |
-| Normalized + zone bonus | B + `+0.15` if next node ∈ KNN(current node) |
+| Reward | Condition | Formula | Typical value |
+|--------|---------------|---------|---------------|
+| `visit_bonus` | Visit a target node | `(global_max - global_mean) / global_std` | +0.87 |
+| `distance` | Every move | `-(travel_time - global_mean) / global_std` | −0.5 to −2.0 |
+| `zone_bonus` | Visited node is KNN-neighbor of previous | `(global_mean - global_min) / global_std` | +0.15 |
+| `noop_penalty` | Truck idles (NO-OP) | `-(global_max - global_min) / global_std` | −1.5 |
+| `coverage` | Terminal: per unvisited node | `-(global_max - global_mean) / global_std` | −0.87 × N |
+| `fleet_time` | Terminal: added to last reward | `-(fleet_time - 200) / 100 × unit` | −7.0 to +1.0 |
 
 - **Observation**: 10-dim feature vector per node (see Architecture section).
-- **Baseline**: KMeans + Greedy (493/500 customers, 415.41h).
+- **Baseline**: KMeans + Greedy (493/500 customers, 315.41h).
 
 #### Results
 
 | Metric | Greedy Baseline | A2C Agent |
 |---|---|---|
 | Customers visited | 493 / 500 | — |
-| Total fleet time (h) | 415.41 | — |
+| Total fleet time (h) | 315.41 | — |
 | Route intersections | 1.46% | — |
 | Mean episode reward (ep. 1000) | — | — |
 | Mean normalized return | — | — |
@@ -346,7 +361,7 @@ Additionally, adding a small **zone bonus** (+0.15) when a truck visits a node w
 - The GNN aggregates KNN neighborhood information in a single message-passing step, giving each node an awareness of its local cluster — which helps the policy avoid routing trucks to geographically distant customers.
 - The zone bonus provides a soft inductive bias toward local routing without hardcoding any clustering step — the model learns to form geographic clusters organically.
 - A fixed visit bonus (`≈+0.87`, equal to the normalized mean travel time) ensures that visiting any customer is always better than doing nothing, preventing the policy from collapsing to the trivial "retire all trucks immediately" solution.
-
+- Since this approach is more complex, we observe that it requires more episodes than the previous ones (about 1000–1500) to converge. In addition, it does not always converge within the same number of hours we expect, but rather around ~100 hours
 ---
 
 ## Running the Code
