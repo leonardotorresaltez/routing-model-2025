@@ -2,6 +2,7 @@ import torch
 import random
 import numpy as np
 import os
+import pickle
 import wandb
 from tqdm import tqdm
 import sys
@@ -170,6 +171,12 @@ def report(
     path = f"checkpoints/{cfg.run_name}_best.pt"
     torch.save(agent.policy.state_dict(), path)
     print(f"--> SAVED BEST MODEL: {path}")
+
+    # Save entire agent as pickle for inference on new environments
+    pickle_path = f"checkpoints/{cfg.run_name}_best_agent.pkl"
+    with open(pickle_path, "wb") as f:
+        pickle.dump(agent, f)
+    print(f"--> SAVED BEST AGENT PICKLE: {pickle_path}")
 
 def print_verification_info(nodesObjs, data, truck_starts):
     print("\n" + "="*40)
