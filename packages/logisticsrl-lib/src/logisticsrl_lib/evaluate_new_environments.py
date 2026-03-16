@@ -134,6 +134,16 @@ def main():
         # For now, 1 run.
         rl_comp_time, rl_visited, rl_total_time = run_rl_inference(agent, env, sub_data, truck_starts, cfg)
         
+        print(f"Running OR-Tools Benchmark (1s) on {n} nodes...")
+        ot1_comp_time, ot1_visited, ot1_total_time = run_ortools_benchmark(
+            sub_data["time_matrix"], 
+            truck_starts, 
+            cfg.max_daily_delivery_time_each_truck, 
+            sub_data, 
+            cfg,
+            time_limit=1
+        )
+
         print(f"Running OR-Tools Benchmark (10s) on {n} nodes...")
         ot10_comp_time, ot10_visited, ot10_total_time = run_ortools_benchmark(
             sub_data["time_matrix"], 
@@ -154,15 +164,31 @@ def main():
             time_limit=60
         )
         
+        # Calculate Ratios (handle potential zero/empty values)
+        def calc_ratio(rl_val, ot_val):
+            try:
+                ot_val_float = float(ot_val)
+                rl_val_float = float(rl_val)
+                if ot_val_float > 0:
+                    return f"{rl_val_float / ot_val_float:.3f}"
+            except (ValueError, ZeroDivisionError):
+                pass
+            return "N/A"
+
         results.append({
             "Nodes": n,
             "RL_Time": f"{rl_comp_time:.3f}s",
             "RL_Visited": rl_visited,
             "RL_TotalTravel": f"{rl_total_time:.2f}",
+            "OT1_Visited": ot1_visited,
+            "OT1_TotalTravel": f"{ot1_total_time:.2f}",
             "OT10_Visited": ot10_visited,
             "OT10_TotalTravel": f"{ot10_total_time:.2f}",
             "OT60_Visited": ot60_visited,
-            "OT60_TotalTravel": f"{ot60_total_time:.2f}"
+            "OT60_TotalTravel": f"{ot60_total_time:.2f}",
+            "Ratio_RL/OT1": calc_ratio(rl_total_time, ot1_total_time),
+            "Ratio_RL/OT10": calc_ratio(rl_total_time, ot10_total_time),
+            "Ratio_RL/OT60": calc_ratio(rl_total_time, ot60_total_time)
         })
     
     # Print Comparison Table
