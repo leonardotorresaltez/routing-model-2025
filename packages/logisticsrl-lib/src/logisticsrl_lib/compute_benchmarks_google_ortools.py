@@ -23,7 +23,7 @@ def set_seed(seed):
     random.seed(seed)
 
 
-def solve_with_ortools(time_matrix, truck_starts, max_time):
+def solve_with_ortools(time_matrix, truck_starts, max_time, time_limit=60*5):
 
     num_nodes = time_matrix.shape[0]
     num_vehicles = len(truck_starts)
@@ -93,7 +93,7 @@ def solve_with_ortools(time_matrix, truck_starts, max_time):
         routing_enums_pb2.LocalSearchMetaheuristic.GUIDED_LOCAL_SEARCH
     )
 
-    search_parameters.time_limit.seconds = 60*5
+    search_parameters.time_limit.seconds = time_limit
 
     solution = routing.SolveWithParameters(search_parameters)
 

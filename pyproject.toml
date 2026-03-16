@@ -37,3 +37,4 @@ logisticsrl-lib = { path = "packages/logisticsrl-lib", develop = true }
 train = "logisticsrl_lib.main:train"
 benchmarks = "logisticsrl_lib.compute_benchmarks:train"
 benchmarks_2 = "logisticsrl_lib.compute_benchmarks_google_ortools:train"
+evaluate_new_environments = "logisticsrl_lib.evaluate_new_environments:main"
