@@ -16,12 +16,11 @@
 2. [Problem Statement](#problem-statement)
 3. [Architecture](#architecture)
 4. [Experiments](#experiments)
-   - [Baseline results 1](#baseline-expected-results-1--kmeans--greedy)
-   - [Baseline results 2](#baseline-expected-results-2--google-or--tools) 
+   - [Baseline results](#baseline-expected-results--google-or--tools) 
    - [Exp 1: Pointer Network](#experiment-1-policy-pointer-network)
-   - [Exp 2: A2C (Main)](#experiment-2-policy-pointer-network-a2c-main-branch)
-   - [Exp 3: A2C + KNN](#experiment-3-policy-pointer-network-a2c-knn)
-   - [ Evaluation, comparison to our baseline](#evaluation-comparison-to-our-baseline)
+   - [Exp 2: PPN + A2C (Main)](#experiment-2-policy-pointer-network--a2c)
+   - [Exp 3: PPN + A2C + KNN](#experiment-3-policy-pointer-network--a2c--knn)
+
 5. [Running the Code](#running-the-code)
 6. [Final Conclusions](#final-conclusions)
 
@@ -72,7 +71,6 @@ Three dataset sizes were created from representative or real geographic coordina
 | Version | Customers | Depots | Trucks | Time Limit |
 |---|---|---|---|---|
 | `data_version_3` | 10 | 1 | 2 | 12h |
-| `data_version_1` | 50 | 1 | 5 | 24h |
 | `data_version_2` | 500 (493 feasible deliveries) | 5 | 50 | 24h |
 
 Each instance includes:
@@ -92,7 +90,7 @@ A Gymnasium-compatible environment that wraps the routing problem as a Markov De
 - **Action**: A joint `(truck_id, node_id)` pair — select which truck to dispatch and which customer it should visit next. A special `NO-OP` action allows a truck to retire when it is no longer efficient.
 - **Episode end**: All customers visited or trucks not being able accept customers considering the daily time limit (truncation).
 
-### Feature Engineering (Observation Space)
+### Observation Space
 
 Each node is represented by a **10-dimensional feature vector**:
 
@@ -115,68 +113,19 @@ Each node is represented by a **10-dimensional feature vector**:
 | :--- | :--- | :--- | :--- |
 | **Combined** | `MultiDiscrete` | 50 x 501 | **Factorized**: truck first, then node |
 | └─ `truck_id` | `Discrete` | 50 | Which **truck** to dispatch |
-| └─ `node_id` | `Discrete` | 501 + 1 | Which **node** to visit (last index = NO-OP) |
+| └─ `node_id` | `Discrete` | 501 + 1 | Which **node** to visit (last index = NO-OP, truck stopped) |
 
 
-### Policy Network (`FactorizedFleetPolicy`)
 
-```
-Input: 10-dim features per node (** from observation space, see previous section)
-         ↓
-   Linear Embedding (→ 128-dim)
-         ↓
-   GNN Message Passing (1 step, KNN graph, k=15) - not in `main` branch
-         ↓
-   Global Graph Context (mean pooling)
-         ↓
- ┌───────────────────────────────────┐
- │  TRUCK SELECTION (pointer head)   │
- │  Scores each truck via dot-product│
- │  attention + inactive truck mask  │
- └─────────────┬─────────────────────┘
-               │
- ┌─────────────▼─────────────────────┐
- │  NODE SELECTION (pointer head)    │
- │  Scores each node via dot-product │
- │  attention + visited/time mask    │
- └───────────────────────────────────┘
-         ↓
-   Value Head (critic, for A2C)
-```
 
 
 **Key design choices:**
 - **Factorized action selection**: truck and node are selected independently but jointly scored, keeping the action space manageable.
-- **KNN graph (k=15), - for the last experiment, not in `main` branch-**: each node aggregates messages from its 15 nearest neighbors by travel time, encoding spatial locality into the embeddings.
 - **Action masking**: infeasible actions (already-visited customers, time-limit violations) are masked to `-1e9` before softmax — the policy only learns from valid assignments.
 
-### Training Algorithm: A2C (Advantage Actor-Critic)
 
-```
-For each episode:
-  1. Roll out a full routing episode using the current policy
-  2. Compute discounted returns G_t for each step
-  3. Compute advantages: A_t = G_t - V(s_t)   (critic baseline)
-  4. Actor loss:  L_actor  = -E[log π(a|s) · A_t]
-  5. Critic loss: L_critic = MSE(V(s_t), G_t)
-  6. Entropy bonus: L_ent  = -E[H(π)]         (exploration)
-  7. Total loss = L_actor + 0.1 · L_critic + 0.07 · L_ent
-  8. Gradient clipping (max_norm = 0.5)
-  9. Cosine annealing LR schedule
-```
 
-### Reward Function
 
-| Component | When | Formula |
-|---|---|---|
-| **Visit bonus** | Per customer visited | `≈ +0.87` (normalized) |
-| **Distance penalty** | Per step | `-(travel_time - μ) / σ` |
-| **Zone bonus** | Per step (if neighbor) | `+0.15` if next node is in KNN(prev_node) |
-| **NO-OP penalty** | Per truck retired | `-1.5` |
-| **Fleet time reward** | Terminal | `-(total_fleet_time - 400h) / 100`, clipped [-5, +2] |
-| **Coverage penalty** | Terminal | `-0.87 × n_unvisited` |
-
-All per-step rewards are **normalized** using the global mean and standard deviation of the travel time matrix, so the same reward scale applies across different data instances.
 
 ---
 
@@ -184,38 +133,8 @@ All per-step rewards are **normalized** using the global mean and standard devia
 
 ---
 
-### Baseline expected results 1 — KMeans + Greedy
 
-#### Hypothesis
-
-A simple, non-learning approach combining geographic clustering with greedy nearest-neighbor routing can serve as a meaningful lower bound. Any RL agent that learns meaningful routing should beat this baseline on total time and coverage, especially on harder instances.
-
-#### Experiment Setup
-
-1. **Cluster customers** using K-Means (k = number of trucks), assigning each cluster to one truck's home depot.
-2. Within each cluster, build a route using **greedy nearest-neighbor**: always go to the closest unvisited customer, subject to the daily time limit.
-3. Evaluate: total customers visited, total fleet time, percentage of intersecting route segments.
-
-No learning is involved — this is a deterministic, rule-based benchmark.
-
-#### Results
-
-| Instance | Customers visited | Total fleet time (h) | Route intersections |
-|---|---|---|---|
-| `data_version_1` (50 cust., 5 trucks) | **47 / 50** | 37.57 | 2.47% |
-| `data_version_2` (500 cust., 50 trucks) | **493 / 500** | 415.41 | 1.46% |
-| `data_version_3` (10 cust., 2 trucks) | **4 / 10** | 14.00 | 0.00% |
-
-#### Conclusions
-
-- The greedy approach achieves high customer coverage on larger instances (47/50 and 493/500) but distance could be covered more efficiently — it does not plan ahead globally.
-- On the smallest instance (`data_version_3`, 2 trucks), performance drops significantly because the greedy strategy fails when the time limit is tight relative to the network density.
-- **Route intersections (~1–2%)** reveal that greedy routing creates inefficient, crossing paths — a classic symptom of locally-optimal but globally-suboptimal routing.
-- The RL agent must be able to deliver to all possible customers (not all are at a distance of <24 h by truck>), must beat ≤415.41h fleet time, and drive intersections toward 0%.
-
----
-
-### Baseline expected results 2 — Google OR-Tools
+### Baseline expected results — Google OR-Tools
 
 #### Hypothesis
 
@@ -242,7 +161,7 @@ OR-Tools allows setting search limits, such as global time limits, to keep the b
 
 ---
 
-### Experiment 1: Policy pointer network
+### Experiment 1: Policy Pointer Network
 *It will be refered as PPN.*
 
 #### Hypothesis
@@ -256,6 +175,50 @@ A minimal 10-customer, 2-truck instance is a good debugging and proof-of-concept
 - **Policy**: Linear embedding + pointer attention (no GNN message passing).
 - **Hyperparameters**: `lr=1e-3`, `gamma=0.99`, `episodes=1000`, `embed_dim=128`.
 - **Reward**: Visit bonus + distance penalty (no zone bonus, no fleet time terminal).
+- **Observation**: 10-dim feature vector per node (see Feature Engineering (Observation Space) section).
+
+
+### Policy Network
+
+```
+Input: 10-dim features per node (from observation space)
+         ↓
+   Linear Embedding (→ 128-dim)
+         ↓
+   Global Graph Context (Mean Pooling)
+         ↓
+   Linear Transformation (`msg_linear`)
+         ↓
+ ┌──────────────────────────────────────────┐
+ │      TRUCK SELECTION (pointer head)      │
+ │  Query: Graph Context                    │
+ │  Keys: Truck Embeddings                  │
+ │  Scores via dot-product attention + mask │
+ └────────────────────┬─────────────────────┘
+                      │
+ ┌────────────────────▼─────────────────────┐
+ │       NODE SELECTION (pointer head)      │
+ │  Query: Selected Truck Embedding         │
+ │  Keys: All Node Embeddings               │
+ │  Scores via dot-product attention + mask │
+ └──────────────────────────────────────────┘
+         ↓
+   Log-Probs (actor, for REINFORCE)
+```
+
+#### Training Algorithm: REINFORCE (Policy Gradient)
+
+```
+For each episode:
+  1. Roll out a full routing episode using the current policy
+  2. Compute discounted returns G_t for each step
+  3. Actor loss:  L_actor  = -E[log π(a|s) · G_t]  (using raw returns)
+  4. Entropy bonus: L_ent  = -E[H(π)]              (exploration)
+  5. Total loss = L_actor + 0.05 · L_ent
+  6. Gradient clipping (max_norm = 0.5)
+  7. Cosine annealing LR schedule
+```
+
 
 #### Results
 
@@ -280,8 +243,8 @@ The PNN experiment achieved a reward of 684.08, visiting all 493 destinations wi
 
 ---
 
-### Experiment 2: Policy pointer network + A2C (`main` branch)
-*It will be refered as A2C*.
+### Experiment 2: Policy Pointer Network - A2C
+*It will be refered as PPN+A2C*.
 
 #### Hypothesis
 
@@ -293,27 +256,87 @@ The A2C agent (with critic baseline) should converge faster and achieve better s
 - **Algorithm**: A2C (actor + critic).
 - **Policy**: `FactorizedFleetPolicy` with GNN message passing (KNN k=15).
 - **Hyperparameters**: `lr=1e-3`, `gamma=0.99`, `episodes=1000`, `embed_dim=128`, `max_extra_steps=10`,`entropy_bonus=0.07`, `value_coef=0.1`
-- **Reward**: Full reward (visit bonus + distance + zone bonus + terminal fleet time + coverage).
+- **Observation**: 10-dim feature vector per node (see Feature Engineering (Observation Space) section).
+
+
+#### Reward Function
+
+| Component | When | Formula |
+|---|---|---|
+| **Visit bonus** | Per customer visited | `≈ +0.87` (normalized) |
+| **Distance penalty** | Per step | `-(travel_time - μ) / σ` |
+| **Zone bonus** | Per step (if neighbor) | `+0.15` if next node is in KNN(prev_node) |
+| **NO-OP penalty** | Per truck retired | `-1.5` |
+| **Fleet time reward** | Terminal | `-(total_fleet_time - 400h) / 100`, clipped [-5, +2] |
+| **Coverage penalty** | Terminal | `-0.87 × n_unvisited` |
+
+All per-step rewards are **normalized** using the global mean and standard deviation of the travel time matrix, so the same reward scale applies across different data instances.
+
+
+
+#### Policy Network
+
+```
+Input: 10-dim features per node (from observation space)
+         ↓
+   Linear Embedding (→ 128-dim)
+         ↓
+   Global Graph Context (Mean Pooling)
+         ↓
+   Linear Transformation (`msg_linear`)
+         ↓
+ ┌──────────────────────────────────────────┐
+ │      TRUCK SELECTION (pointer head)      │
+ │  Query: Graph Context                    │
+ │  Keys: Truck Embeddings                  │
+ │  Scores via dot-product attention + mask │
+ └────────────────────┬─────────────────────┘
+                      │
+ ┌────────────────────▼─────────────────────┐
+ │       NODE SELECTION (pointer head)      │
+ │  Query: Selected Truck Embedding         │
+ │  Keys: All Node Embeddings               │
+ │  Scores via dot-product attention + mask │
+ └──────────────────────────────────────────┘
+         ↓
+   Value Head (critic, for A2C)
+```
+
+#### Training Algorithm
+
+```
+For each episode:
+  1. Roll out a full routing episode using the current policy
+  2. Compute discounted returns G_t for each step
+  3. Compute advantages: A_t = G_t - V(s_t)   (critic baseline)
+  4. Actor loss:  L_actor  = -E[log π(a|s) · A_t]
+  5. Critic loss: L_critic = MSE(V(s_t), G_t)
+  6. Entropy bonus: L_ent  = -E[H(π)]         (exploration)
+  7. Total loss = L_actor + 0.1 · L_critic + 0.07 · L_ent
+  8. Gradient clipping (max_norm = 0.5)
+  9. Cosine annealing LR schedule
+```
+
 
 #### Results
 
 | Experiment | Episode | Total Reward | Total fleet time (h) | Customers visited | Intersections (%) | Last Loss |
 | :--- | :---: | :---: | :---: | :---: | :---: | :---: |
-| **A2C (main branch)** | (results from 15) 500 | 768.88 | 254.02 | 493 | 0.01% | -0.0483 |
+| **PPN+A2C (main branch)** | (results from 15) 500 | 768.88 | 254.02 | 493 | 0.01% | -0.0483 |
 
-The A2C experiment visited the same destinations (493) as PPN method but the total fleet time was significantly decreased from  466 to 254 h in the best episodes for PPN and A2C, respectively. From Figure 1 we can see that the rewards are stable but start decreasing along with total destinations with over 400 episodes.
+The PPN+A2C experiment visited the same destinations (493) as PPN method but the total fleet time was significantly decreased from  466 to 254 h in the best episodes for PPN and PPN+A2C, respectively. From Figure 1 we can see that the rewards are stable but start decreasing along with total destinations with over 400 episodes.
 
 
 
 
 #### Conclusions
 
-- The A2C agent with critic reduces increases rewards and final metrics significantly compared to vanilla REINFORCE.
+- The PPN+A2C agent with critic reduces increases rewards and final metrics significantly compared to vanilla REINFORCE.
 
 ---
 
-### Experiment 3: Policy pointer network + A2C + KNN
-*It will be refered as A2C+KNN*.
+### Experiment 3: Policy Pointer Network - A2C - KNN
+*It will be refered as PPN+A2C+KNN*.
 
 #### Hypothesis
 
@@ -344,26 +367,75 @@ Additionally, added a small **zone bonus** (+0.15) when a truck visits a node wi
 - **GNN**: 1-step message passing over KNN graph (k=15), built from the travel time matrix ( matrix to get time-distances from x => y )
 - **Action masking**: inactive-trucks (trucks with completed work), visited-node and time-constraint mask (vectorized, no Python loop over trucks).
 - **Hyperparameters**: `lr=1e-3`, `gamma=0.99`, `episodes=1000`, `embed_dim=128`, `max_extra_steps=10`,`entropy_bonus=0.07`, `value_coef=0.1`
-- **Final rewards**: 
-
-| Reward | Condition | Formula | Typical value |
-|--------|---------------|---------|---------------|
-| `visit_bonus` | Visit a target node | `(global_max - global_mean) / global_std` | +0.87 |
-| `distance` | Every move | `-(travel_time - global_mean) / global_std` | −0.5 to −2.0 |
-| `zone_bonus` | Visited node is KNN-neighbor of previous | `(global_mean - global_min) / global_std` | +0.15 |
-| `noop_penalty` | Truck idles (NO-OP) | `-(global_max - global_min) / global_std` | −1.5 |
-| `coverage` | Terminal: per unvisited node | `-(global_max - global_mean) / global_std` | −0.87 × N |
-| `fleet_time` | Terminal: added to last reward | `-(fleet_time - 200) / 100 × unit` | −7.0 to +1.0 |
-
 - **Observation**: 10-dim feature vector per node (see Feature Engineering (Observation Space) section).
+
+#### Reward Function
+
+| Component | When | Formula |
+|---|---|---|
+| **Visit bonus** | Per customer visited | `≈ +0.87` (normalized) |
+| **Distance penalty** | Per step | `-(travel_time - μ) / σ` |
+| **Zone bonus** | Per step (if neighbor) | `+0.15` if next node is in KNN(prev_node) |
+| **NO-OP penalty** | Per truck retired | `-1.5` |
+| **Fleet time reward** | Terminal | `-(total_fleet_time - 400h) / 100`, clipped [-5, +2] |
+| **Coverage penalty** | Terminal | `-0.87 × n_unvisited` |
+
+All per-step rewards are **normalized** using the global mean and standard deviation of the travel time matrix, so the same reward scale applies across different data instances.
+
+
+
+#### Policy Network
+
+```
+Input: 10-dim features per node (** from observation space, see previous section)
+         ↓
+   Linear Embedding (→ 128-dim)
+         ↓
+   GNN Message Passing (1 step, KNN graph, k=15) - not in `main` branch
+         ↓
+   Global Graph Context (mean pooling)
+         ↓
+ ┌───────────────────────────────────┐
+ │  TRUCK SELECTION (pointer head)   │
+ │  Scores each truck via dot-product│
+ │  attention + inactive truck mask  │
+ └─────────────┬─────────────────────┘
+               │
+ ┌─────────────▼─────────────────────┐
+ │  NODE SELECTION (pointer head)    │
+ │  Scores each node via dot-product │
+ │  attention + visited/time mask    │
+ └───────────────────────────────────┘
+         ↓
+   Value Head (critic, for A2C)
+```
+
+
+#### Training Algorithm
+
+```
+For each episode:
+  1. Build K-Nearest Neighbors (KNN) Graph (k=15, Euclidean distance)
+  2. Roll out episode using Policy Network with 1-step GNN Message Passing
+  3. Compute discounted returns G_t for each step
+  4. Compute advantages: A_t = G_t - V(s_t)   (using critic baseline)
+  5. Actor loss:  L_actor  = -E[log π(a|s) · A_t]
+  6. Critic loss: L_critic = MSE(V(s_t), G_t)
+  7. Entropy bonus: L_ent  = -E[H(π)]         (exploration)
+  8. Total loss = L_actor + 0.1 · L_critic + 0.07 · L_ent
+  9. Gradient clipping (max_norm = 0.5)
+ 10. Cosine annealing LR schedule
+```
+
+
 
 #### Results
 
 | Experiment | Episodes | Total Reward | Total fleet time (h) | Customers visited | Intersections (%) | Last Loss |
 | :--- | :---: | :---: | :---: | :---: | :---: | :---: |
-| **A2C + kNN** | (results from 520) 1500 | 683.32 | 798.71 | 493 | 0.02% | 9.1428 |
+| **PPN + A2C + kNN** | (results from 520) 1500 | 683.32 | 798.71 | 493 | 0.02% | 9.1428 |
 
-The A2C+KNN experiment visited the same destinations (493) as the other method but the total fleet time was significantly increased.  From Figure 1 we can see that the rewards are stable over 1000 episodes.
+The PPN+A2C+KNN experiment visited the same destinations (493) as the other method but the total fleet time was significantly increased.  From Figure 1 we can see that the rewards are stable over 1000 episodes.
 
 
 #### Conclusions
@@ -381,20 +453,20 @@ The A2C+KNN experiment visited the same destinations (493) as the other method b
 
 #### Training rewards comparison
 
-Given realistic data (`data_version_2`) training across all three experiments progressed as expected, with rewards steadily increasing throughout the episodes. Although A2C+KNN was hypothesized to yield superior results due to its KNN-enriched observation space, initial findings indicate it did not outperform the standard A2C approach, as illustrated in **Figure 1**. All our models reached during training the available (due to time constraints, 24 hours for truck) customers, 493. The best total fleet time of our final accepted model was 254 hours (A2C experiment), versus 466 hours (PPN experiment) and 799 hours (A2C+KNN experiment).  Consequently, A2C experiment is used for the final performance comparison against the baseline results, and it is the stable approach on the `main` branch.
+Given realistic data (`data_version_2`) training across all three experiments progressed as expected, with rewards steadily increasing throughout the episodes. Although PPN+A2C+KNN was hypothesized to yield superior results due to its KNN-enriched observation space, initial findings indicate it did not outperform the standard PPN+A2C approach, as illustrated in **Figure 1**. All our models reached during training the available (due to time constraints, 24 hours for truck) customers, 493. The best total fleet time of our final accepted model was 254 hours (PPN+A2C experiment), versus 466 hours (PPN experiment) and 799 hours (PPN+A2C+KNN experiment).  Consequently, PPN+A2C experiment is used for the final performance comparison against the baseline results, and it is the stable approach on the `main` branch.
 
-**Why A2C experiment might have outperformed A2C+KNN**
+**Why PPN+A2C experiment might have outperformed PPN+A2C+KNN**
 
 - Context Imbalance: Over-prioritizing local KNN features may have caused the model to lose the global fleet status necessary for overall route optimization.
-- Increased Complexity: Higher parameter counts and a complex gradient path slowed convergence, likely leaving the model in a sub-optimal state compared to A2C experiment.
+- Increased Complexity: Higher parameter counts and a complex gradient path slowed convergence, likely leaving the model in a sub-optimal state compared to PPN+A2C experiment.
 - Feature Redundancy: Existing distance-based features (e.g., min_dist_depot) already capture spatial data, making the KNN enrichment potentially redundant or noisy.
 - Masking Dominance: Strong action masks for visited nodes and time constraints handle the primary routing logic, limiting the marginal benefit of advanced spatial representations.
 
-#### Evaluation, comparison to `Baseline 2 approach, benchmark`
+#### Evaluation, comparison to `Baseline approach, benchmark`
 
-To evaluate our best-performing **A2C model**, we conducted inference (using frozen weights) on a realistic, unseen dataset with a **variable number of customers**.
+To evaluate our best-performing **PPN+A2C model**, we conducted inference (using frozen weights) on a realistic, unseen dataset with a **variable number of customers**.
 
-With an execution time of just **2-3 seconds**, A2C significantly outperforms the benchmark in **computational speed**. A2C achieves full coverage (visiting all feasible customers) almost instantly, whereas OR-Tools requires more than 10 seconds to achieve full coverage for instances with more than 295 customers. This near-instant inference is critical for **offline applications on edge devices** with limited compute power.
+With an execution time of just **2-3 seconds**, PPN+A2C significantly outperforms the benchmark in **computational speed**. PPN+A2C achieves full coverage (visiting all feasible customers) almost instantly, whereas OR-Tools requires more than 10 seconds to achieve full coverage for instances with more than 295 customers. This near-instant inference is critical for **offline applications on edge devices** with limited compute power.
 
 However, in terms of **routing efficiency** (total fleet hours), OR-Tools consistently provides more optimized solutions across all time limits (1s, 10s, and 60s). As shown in the **'Ratio OT/RL'** columns, while the RL approach is superior for speed and coverage, OR-Tools remains more effective at minimizing global fleet costs when allowed more computation time.
 
@@ -402,7 +474,7 @@ However, in terms of **routing efficiency** (total fleet hours), OR-Tools consis
 
 
 ![Alt text](readme_helpers/general_table_comparison_v2.png)
-*Figure 2: Training results comparison between A2C verus Google OR-Tools (Baseline 2 approach, benchmark).*
+*Figure 2: Training results comparison between PPN+A2C verus Google OR-Tools (Baseline).*
 
 
 
@@ -469,16 +541,6 @@ Available arguments:
 | `--device` | auto | `cuda` or `cpu` |
 | `--no-wandb` | — | Flag to disable W&B logging |
 
-### Running the Baseline Greedy Benchmark
-
-```bash
-poetry run benchmarks --data_dir data_version_2
-```
-
-This runs the KMeans + Greedy baseline and saves:
-- Console output with per-cluster route summaries.
-- `checkpoints/clusters_visualization.png` — scatter plot of customer clusters.
-- `checkpoints/viz_kmeans_and_greedy_<data_dir>.html` — interactive route map.
 
 ### Running the SOTA (Google OR-Tools)
 
@@ -492,12 +554,11 @@ This runs the SOTA OR-Tools
 
 ## Final Conclusions
 
-This project demonstrates that **Reinforcement Learning can learn meaningful routing policies for multi-depot, multi-truck VRP instances** using a combination of:
+This project demonstrates that **Reinforcement Learning can learn meaningful routing policies for multi-depot, multi-truck VRP instances**, specially when compute time is critical, using a combination of:
 
-1. **Graph Neural Networks** for spatially-aware node representations.
-2. **Factorized action selection** to keep the action space tractable.
-3. **Action masking** to guarantee feasibility without penalizing hard constraints in the reward.
-4. **Normalized, shaped rewards** to stabilize training across different instance scales.
+1. **Factorized action selection** to keep the action space tractable.
+2. **Action masking** to guarantee feasibility without penalizing hard constraints in the reward.
+3. **Normalized, shaped rewards** to stabilize training across different instance scales.
 
 **Key lessons learned:**
 
@@ -512,7 +573,7 @@ This project demonstrates that **Reinforcement Learning can learn meaningful rou
 - **Capacity constraints**: Adding real truck capacity constraint is another major constraint to incorporate.
 - **Time windows**: Adding delivery time windows per customer is another major constraint to incorporate.
 - **Generalization to unseen instances**: The current model is trained on fixed instances. Training on randomly generated instances (curriculum learning) would improve generalization.
-- **Improving Experiment 3**: Experiment 3 could implement a multi-layer GNN architecture (e.g., GAT) using edge costs and dynamic graph updates to better capture spatial dependencies as nodes are visited. Additionally, integrating local zone-based attention with global context pooling will allow the model to balance localized route efficiency with global fleet optimization.
+- **Improving Experiment PPN+A2C+KNN**: Experiment PPN+A2C+KNN could implement a multi-layer GNN architecture (e.g., GAT) using edge costs and dynamic graph updates to better capture spatial dependencies as nodes are visited. Additionally, integrating local zone-based attention with global context pooling will allow the model to balance localized route efficiency with global fleet optimization.
 
 
 
