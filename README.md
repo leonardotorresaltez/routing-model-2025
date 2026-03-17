@@ -1,464 +1,547 @@
+# Deep Learning for Logistics Optimization: Vehicle Routing with Reinforcement Learning
 
-# Final Project: Deep Learning for Logistics Optimization
-**Title:** Maximize Truck volume Utilization with Deep Learning
-**Date:** 2026-01-19
-**Version:** 6  
+**UPC School — Postgraduate in Artificial Intelligence with Deep Learning**
 
----
+**Authors:** Leonardo Torres, Tharini Moorthy, Alejandro Ortiz, Clara Gregori
 
-**Main objectives:**
-1. Deliver goods to all clients (no deadline constraints).
-2. Minimize total travel distance for the fleet.
-3. Maximize volume utilization on each truck.
+**Supervisor:** Jorge Pueyo
 
-**V0
-1. For 1 truck, deliver all the goods with the less distance/time as possible
-
-## 1. Problem Statement
-Design a system that:
-- Optimizes routing for all vehicles as a single fleet 
-- Starts the day at a depot.
-- Delivers goods to their destinations.
-- Packs goods properly in the pallets (3D packing constraints).
-- Packs pallets properly in the truck (3D packing constraints).
-- May go to pick up goods at a new depot nearby the last delivery of the last route.
-- Ends the day (deliveries) at the starting point depot.
-
-**V0
-- Optimizes routing for 1 vehicle 
-- Starts the day at a depot.
-- Delivers goods to their destinations/customers.
-- Ends the day at the starting point depot.
-
-**Key Insight**: We make parallel routing decisions across all trucks in a single episode, minimizing **global fleet cost** (total distance + time) while maximizing truck utilization (weight + capacity loading). Vehicle count is not explicitly minimized; instead, it emerges naturally as the cost function incentivizes fuller trucks.
-
+**Date:** 18/3/2026
 
 ---
 
-# Logistics Requirements Document
+## Index
 
-### 1. Resources
-- **Depots**:
-  - D number of depots (D loading points).
-- **Trucks**:
-  - Each depot has its own fleet of trucks, with different types of trucks
-  - Different truck volumes and different maximum truck weights.
-  - Trucks work **less than 12 hours per day**.
-  - Trucks can have more than 1 route, with each route having multiple deliveries per day.
-  - Not all trucks can access all destinations (due to farm access restrictions, see *Client* paragraph).
-  - **Types of trucks**:
-    i.e. Type A: Max capacity and volume.
-
-**V0
-- **Depots**:
-  - D number of depots (D loading points). D =1.
-- **Trucks**:
-  - 1 truck that can deliver as many goods as it is asked for. 
+1. [Introduction](#introduction)
+2. [Problem Statement](#problem-statement)
+3. [Architecture](#architecture)
+4. [Experiments](#experiments)
+   - [Baseline results 1](#baseline-expected-results-1--kmeans--greedy)
+   - [Baseline results 2](#baseline-expected-results-2--google-or--tools) 
+   - [Exp 1: Pointer Network](#experiment-1-policy-pointer-network)
+   - [Exp 2: A2C (Main)](#experiment-2-policy-pointer-network-a2c-main-branch)
+   - [Exp 3: A2C + KNN](#experiment-3-policy-pointer-network-a2c-knn)
+   - [ Evaluation, comparison to our baseline](#evaluation-comparison-to-our-baseline)
+5. [Running the Code](#running-the-code)
+6. [Final Conclusions](#final-conclusions)
 
 ---
 
-### 2. Pallets (V2)
-- Different pallet volumes and different maximum pallet weights.
-  - Pallet of type A: base weight and volume.
-  - Pallet of type B: base weight and volume.
-- Each pallet type, in case of having unique type of goods, has a predefined maximum number of goods.
-  - Example: Pallet A, goods = Potatoes, max number = 20.
-- For pallets with mixed good types, **maximum 35 units/sacks per pallet** (for simplification).
+## Introduction
 
-**V0
-- No pallets
----
+This project tackles a real-world logistics optimization problem: **how do you plan daily delivery routes for a heterogeneous fleet of trucks, departing from multiple depots, to serve hundreds of customers — as cheaply and efficiently as possible?**
 
-### 3. Products
-- List of product weights and volumes:
-  - Example: Product 1 → weight = 3 kg, volume = 10×2×30 cm.
+This problem is known as the **Multi-Depot Vehicle Routing Problem (MDVRP)**, a variant of the classical VRP that has been studied for decades. Classical solvers (e.g., OR-Tools, CPLEX) can find near-optimal solutions but are slow and expensive to run on large instances. **Deep Learning** offers a compelling alternative: train a model once, and at inference time generate good-quality routes in milliseconds.
 
-**V0
-- Not rellevant, since the truck can take as many goods as possible, from any weight and size.
----
-
-### 4. Delivery Constraints (V2)
-- **Goods of type A** (agrocenter client, milk product):
-  - Must be served within **2 days** from the order day.
-- All other goods:
-  - Must be served within **7 days** from the order day.
-
-**V0
-- Not rellevant.
----
- 
-### 5. Delivery/Clients (V2)
-- **Access types**:
-  - All trucks.
-  - Trucks type A and B.
-  - Only trucks type B.
-- **Client types**:
-  - Agrocenter.
-  - Others.
-
-**V0
-- Not rellevant.
----
-
-## 2. Why This Problem?
-- Real-world relevance: combines **Vehicle Routing Problem (VRP)** with **3D Bin Packing**.
-- Multi-objective optimization: fleet-wide routing + truck utilization maximization.
-- **Key difference from classical routing**: We optimize the entire fleet cost simultaneously, allowing the model to learn load-balancing across trucks dynamically.
-
+Our final approach (`main` branch) combines:
+- A **custom Gymnasium environment** that simulates the fleet routing process step by step.
+- A **Pointer Network with Cross-Attention** that learns to select which truck to dispatch and which customer to visit next by "pointing" to destinations.
+- A **policy gradient algorithm (A2C)** to train the policy from experience.
 
 
 ---
 
-## 3. Project Tracks
-### Reinforcement Learning (Train from Scratch)
+## Problem Statement
 
-- **Environment**:
-  - **STATE** (Multi-Agent, Multi-Depot Graph)
-    Represent the problem as a dynamic graph with all T trucks and all undelivered customers:
+### Objective
 
-    *Graph Nodes*:
-    - **Truck Nodes** (T total, one per truck):
-      - Current location: (x, y) coordinate or depot/depot node
-      - Home depot: which of D depots the truck belongs to (return point at day end)
-    
-    - **Depot Nodes**  (D static):
-      - Fixed loading point locations (x, y)
-      - Truck bases (each truck assigned to one depot)
-      - Optional re-pickup points (trucks may visit nearby depots after deliveries)
-    
-    - **Customer Nodes** (N undelivered customers):
-      - Location: (x, y) coordinate
-      - Demand: quantity (units) + weight (kg) + volume (m³)
-      - Time window: [ready_time, due_time] (minutes from day start)
-      - Truck access restrictions: [can_A, can_B, can_C]
-      - Client type: agrocenter vs. other (affects SLA urgency)
-  
-      **V0:
-      - Location: (x, y) coordinate
-      - Demand: quantity (units)
+Given a set of customers (delivery locations) and a fleet of trucks starting from one or more depots:
 
+1. **Visit all possible customers** — every delivery must be completed, when restrictions allow it.
+2. **Minimize total fleet travel time** — sum of all truck travel times.
+3. **Respect the daily time limit** — each truck has a maximum working day (12 or 24 hours).
 
+### Simplifications 
 
-    *Node Features (per truck)*:
-    - Position: current (x, y) or depot ID
-    - Truck type: A, B, or C (determines capacity and access permissions)
-    - Home depot: depot ID (0–D) where truck returns at end of day
-    - Capacity state:
-      - Current load: sum of all assigned customer demands (units)
-      - Current weight: sum of assigned customer weights (kg)
-      - Current volume: sum of assigned customer volumes (m³)
-    - Time state:
-      - Elapsed time: total time spent (travel + service + wait, in minutes)
-      - Max hours: 12 hours (720 minutes) hard limit
-    - Route state: list of visited customer IDs (for this truck's current route)
-  
-    **V0:
-    - Position: current (x, y) or depot ID
-    - Truck type: A, B, or C (determines capacity and access permissions)
-    - Home depot: depot ID (0–D) where truck returns at end of day
-    - Route state: list of visited customer IDs (for this truck's current route)
+This project progressively scales from a minimal formulation to a richer multi-depot/multi-truck version:
 
+| Feature | Current |
+|---|---|
+| Customers | Multiple (up to 500) |
+| Trucks |  Multiple (up to 50) |
+| Depots |  Multiple (up to 5) |
+| Truck time window constraints |  Daily time limit per truck |
+| Truck capacity restriction |  No (future work) |
+| Truck access restrictions to costumers |  No (future work) |
+| Customer time windows constraints |  No (future work)  |
 
-    *Node Features (per customer)*:
-    - Geographic location: (x, y) in coordinate space
-    - Demand vector: [quantity, weight_kg, volume_m3]
-    - Time window: [ready_time_min, due_time_min] relative to day start
-    - Truck compatibility: which truck types can serve (access restrictions)
-    - Client type: binary flag (agrocenter=1, other=0)
-    - Visitation status: unvisited, visited by truck_i, or completed
-  
-    **V0:
-    - Geographic location: (x, y) in coordinate space
-    - Demand vector: [quantity]
-    - Visitation status: unvisited, visited by truck_i, or complete
+### Data Instances
 
-    *Graph Edges*:
-    - **Truck-to-Customer edges**: 
-      - Distance/time from truck's current location to each unvisited customer
-      - Feasibility mask: 1 if feasible (truck type access + capacity + time window), 0 otherwise
-    - **Truck-to-depot edges**:
-      - Distance/time from truck's current location to any of the D depots (for return or re-pickup)
-      - Feasibility: always available (to end route or re-pickup)
-    - **Customer-to-depot edges** (for re-pickup feasibility):
-      - Distance/time from customer location to nearby depots
-      - Used to determine if truck can feasibly reach a depot for re-pickup after delivery
+Three dataset sizes were created from representative or real geographic coordinates. `data_version_2` is a business real dataset scenario. Datasets are stored in folder `data/`.
 
-    **V0:
-    - **Truck-to-Customer edges**: 
-      - Distance/time from truck's current location to each unvisited customer
-    - **Truck-to-depot edges**:
-      - Distance/time from truck's current location to any of the D depots (for return or re-pickup)
-      - Feasibility: always available (to end route or re-pickup)
-    - **Customer-to-depot edges** (for re-pickup feasibility):
-      - Distance/time from customer location to nearby depots
-      - Used to determine if truck can feasibly reach a depot for re-pickup after delivery
+| Version | Customers | Depots | Trucks | Time Limit |
+|---|---|---|---|---|
+| `data_version_3` | 10 | 1 | 2 | 12h |
+| `data_version_1` | 50 | 1 | 5 | 24h |
+| `data_version_2` | 500 (493 feasible deliveries) | 5 | 50 | 24h |
 
-  - **ACTION** (Fleet-Level Customer Assignment)
-    Action space: **MultiDiscrete array of length**
-    - Each element: customer_id ∈ [0, N] or action = N (return to depot)
-    - Semantics: assign one customer (or depot action) to each truck **simultaneously** in a single step
-    - Example: 
-      - Truck 0 → visit customer 3
-      - Truck 1 → visit customer 7
-      - Truck 1 → return to its home depot
-      - Truck 2 → visit customer 2
-      - ... (T trucks total)
-      - Truck T-1 → return to its home depot
+Each instance includes:
+- GPS coordinates (lat/lon) for all nodes.
+- Pairwise **travel time matrices** (in hours) between all nodes.
+- Truck assignments to home depots.
 
-    *Constraints on Actions*:
-    - Each customer assigned to at most one truck per step (no duplicate assignments)
-    - Truck can only visit a customer if feasible:
-      - Truck type matches customer access requirements
-      - Truck has remaining capacity (weight, volume, load count)
-      - Truck has remaining time (won't exceed 12-hour limit)
-      - Customer's time window is still open (arrival_time ≤ due_time)
-    - If truck selects action = N (depot), it returns to its home depot, clears its load, and resets for next route
-    - All feasibility checks are **masked at the policy level** (infeasible actions blocked before softmax)
+---
 
-    -*Packing Decision*:
-    - Given selected customer's goods, decide which pallet type to use
-    - Decide item placement within pallet (heuristic guillotine or learned policy)
-    - Decide which truck route the goods go into (if multi-route)
-  
-    **V0:
-    Action space: 
-    - Each element: customer_id ∈ [1] or action = N (return to depot)
-    - Example: 
-      - Truck 0 → visit customer 3
-      - Truck 0 → visit customer 5
-      - Truck 0 → return to its home depot
+## Architecture
 
-    *Constraints on Actions*:
-    - Each customer assigned to at most one truck per step (no duplicate assignments)
-    - Truck can only visit a customer if feasible:
-    - If truck selects action = N (depot), it returns to its home depot, clears its load, and resets for next route
-    - All feasibility checks are **masked at the policy level** (infeasible actions blocked before softmax)
+### Environment (`TSPEnv`)
+
+A Gymnasium-compatible environment that wraps the routing problem as a Markov Decision Process:
+
+- **State**: For each step, the agent observes node coordinates, which nodes have been visited, current truck positions, truck elapsed times, and a full travel time matrix.
+- **Action**: A joint `(truck_id, node_id)` pair — select which truck to dispatch and which customer it should visit next. A special `NO-OP` action allows a truck to retire when it is no longer efficient.
+- **Episode end**: All customers visited or trucks not being able accept customers considering the daily time limit (truncation).
+
+### Feature Engineering (Observation Space)
+
+Each node is represented by a **10-dimensional feature vector**:
+
+| # | Feature | Description |
+|---|---|---|
+| 1-2 | Coordinates | `(lat, lon)` of the node |
+| 3 | `is_target` | 1 if customer, 0 if depot |
+| 4 | `visited` | 1 if already delivered |
+| 5 | `active_ratio` | Fraction of trucks still active (fleet context) |
+| 6 | `avg_fleet_time` | Average elapsed time across all trucks |
+| 7 | `max_fleet_time` | Maximum elapsed time across all trucks |
+| 8 | `home_count` | How many trucks are based at this node |
+| 9 | `min_dist_depot` | Minimum travel time from this node to any depot |
+| 10 | `min_dist_truck` | Minimum travel time from any active truck to this node |
 
 
-  - **REWARD** (Global Fleet Cost Minimization)
-    Multi-component scalar reward (normalized weighted sum):
+### Action Space
 
-    **R(t) = A · r_routing + B · r_efficiency + C · r_completion** 
-    
-    A/B/C are reward weights, these are empirical hyperparameters (to be tuned and validated during training)
-
-    **V0:
-    **R(t) = A · r_routing** 
+| Component | Type | Size (`dataset_2`) | Description |
+| :--- | :--- | :--- | :--- |
+| **Combined** | `MultiDiscrete` | 50 x 501 | **Factorized**: truck first, then node |
+| └─ `truck_id` | `Discrete` | 50 | Which **truck** to dispatch |
+| └─ `node_id` | `Discrete` | 501 + 1 | Which **node** to visit (last index = NO-OP) |
 
 
-    **Key Principle**: All hard constraints (capacity, time window, truck access) are enforced **exclusively via action masking**. The reward function focuses only on optimizing cost and utilization. This prevents the policy from learning infeasible assignments in the first place.
+### Policy Network (`FactorizedFleetPolicy`)
 
-    **r_routing** (travel cost penalty, applies per assignment):
-    ```
-    For each truck→customer assignment in this step:
-      distance = euclidean_distance(truck.position, customer.location)
-      travel_time = distance / avg_speed (minutes)
-      r_routing -= 0.1 * travel_time  # where travel_time = distance / avg_speed
-
-    (negative cost; encourages short, fast deliveries)
-    ```
-
-    **r_efficiency** (truck utilization maximization):
-    Encourage loading trucks to high capacity. Vehicle count is NOT explicitly minimized; it emerges naturally from cost optimization.
-    ```
-    For each truck with assigned customers:
-      utilization = current_load / truck.max_capacity
-      if utilization > 0.8: r_efficiency += 5.0   (strong bonus for well-loaded trucks)
-      elif utilization > 0.5: r_efficiency += 2.0 (moderate bonus for adequately loaded trucks)
-      elif utilization < 0.3: r_efficiency -= 1.0 (mild penalty for significantly underfilled trucks)
-    ```
-    **Rationale**: Maximize how full each truck is, not how many trucks are used. The distance/time cost in r_routing naturally incentivizes fuller trucks: adding an underutilized truck increases total distance/time cost, so the policy learns to consolidate loads.
-
-    **r_completion** (terminal reward, only at episode end):
-    - If all customers delivered AND all trucks returned to home depots:
-      ```
-      r_completion = +500.0 (successful episode)
-      ```
-    - Bonus for early/on-time delivery:
-      ```
-      For each customer delivered before due_time:
-        r_completion += 20.0
-      ```
-    - Penalty for missed deliveries:
-      ```
-      For each customer not delivered at episode end:
-        r_completion -= 200.0
-      ```
-
-    **Action Masking (Feasibility Enforcement)**:
-    Before the policy outputs action probabilities, all infeasible (truck, customer) pairs are masked:
-    - ✅ Truck type access: mask if customer not in truck's allowed types [A, B, C]
-    - ✅ Capacity constraint: mask if assigning customer would exceed truck's max weight/volume/load
-    - ✅ Time window constraint: mask if truck cannot arrive before customer's due_time
-    - ✅ Duplicate prevention: mask if customer already assigned this step to another truck
-    - The policy only sees feasible actions, so it learns **only valid assignments**
-    - The softmax and sampling are applied **after masking**, ensuring 100% feasibility
-   
-   
-
-    **Total Reward at Step t**:
-    ```
-    R(t) = A * r_routing + B * r_efficiency + C * r_completion
-    (weights normalized; adjust empirically during training)
-    All components assume masked, feasible actions only.
-    ```
-    **V0: 
-    R(t) = A * r_routing
+```
+Input: 10-dim features per node (** from observation space, see previous section)
+         ↓
+   Linear Embedding (→ 128-dim)
+         ↓
+   GNN Message Passing (1 step, KNN graph, k=15) - not in `main` branch
+         ↓
+   Global Graph Context (mean pooling)
+         ↓
+ ┌───────────────────────────────────┐
+ │  TRUCK SELECTION (pointer head)   │
+ │  Scores each truck via dot-product│
+ │  attention + inactive truck mask  │
+ └─────────────┬─────────────────────┘
+               │
+ ┌─────────────▼─────────────────────┐
+ │  NODE SELECTION (pointer head)    │
+ │  Scores each node via dot-product │
+ │  attention + visited/time mask    │
+ └───────────────────────────────────┘
+         ↓
+   Value Head (critic, for A2C)
+```
 
 
+**Key design choices:**
+- **Factorized action selection**: truck and node are selected independently but jointly scored, keeping the action space manageable.
+- **KNN graph (k=15), - for the last experiment, not in `main` branch-**: each node aggregates messages from its 15 nearest neighbors by travel time, encoding spatial locality into the embeddings.
+- **Action masking**: infeasible actions (already-visited customers, time-limit violations) are masked to `-1e9` before softmax — the policy only learns from valid assignments.
+
+### Training Algorithm: A2C (Advantage Actor-Critic)
+
+```
+For each episode:
+  1. Roll out a full routing episode using the current policy
+  2. Compute discounted returns G_t for each step
+  3. Compute advantages: A_t = G_t - V(s_t)   (critic baseline)
+  4. Actor loss:  L_actor  = -E[log π(a|s) · A_t]
+  5. Critic loss: L_critic = MSE(V(s_t), G_t)
+  6. Entropy bonus: L_ent  = -E[H(π)]         (exploration)
+  7. Total loss = L_actor + 0.1 · L_critic + 0.07 · L_ent
+  8. Gradient clipping (max_norm = 0.5)
+  9. Cosine annealing LR schedule
+```
+
+### Reward Function
+
+| Component | When | Formula |
+|---|---|---|
+| **Visit bonus** | Per customer visited | `≈ +0.87` (normalized) |
+| **Distance penalty** | Per step | `-(travel_time - μ) / σ` |
+| **Zone bonus** | Per step (if neighbor) | `+0.15` if next node is in KNN(prev_node) |
+| **NO-OP penalty** | Per truck retired | `-1.5` |
+| **Fleet time reward** | Terminal | `-(total_fleet_time - 400h) / 100`, clipped [-5, +2] |
+| **Coverage penalty** | Terminal | `-0.87 × n_unvisited` |
+
+All per-step rewards are **normalized** using the global mean and standard deviation of the travel time matrix, so the same reward scale applies across different data instances.
+
+---
+
+## Experiments
+
+---
+
+### Baseline expected results 1 — KMeans + Greedy
+
+#### Hypothesis
+
+A simple, non-learning approach combining geographic clustering with greedy nearest-neighbor routing can serve as a meaningful lower bound. Any RL agent that learns meaningful routing should beat this baseline on total time and coverage, especially on harder instances.
+
+#### Experiment Setup
+
+1. **Cluster customers** using K-Means (k = number of trucks), assigning each cluster to one truck's home depot.
+2. Within each cluster, build a route using **greedy nearest-neighbor**: always go to the closest unvisited customer, subject to the daily time limit.
+3. Evaluate: total customers visited, total fleet time, percentage of intersecting route segments.
+
+No learning is involved — this is a deterministic, rule-based benchmark.
+
+#### Results
+
+| Instance | Customers visited | Total fleet time (h) | Route intersections |
+|---|---|---|---|
+| `data_version_1` (50 cust., 5 trucks) | **47 / 50** | 37.57 | 2.47% |
+| `data_version_2` (500 cust., 50 trucks) | **493 / 500** | 415.41 | 1.46% |
+| `data_version_3` (10 cust., 2 trucks) | **4 / 10** | 14.00 | 0.00% |
+
+#### Conclusions
+
+- The greedy approach achieves high customer coverage on larger instances (47/50 and 493/500) but distance could be covered more efficiently — it does not plan ahead globally.
+- On the smallest instance (`data_version_3`, 2 trucks), performance drops significantly because the greedy strategy fails when the time limit is tight relative to the network density.
+- **Route intersections (~1–2%)** reveal that greedy routing creates inefficient, crossing paths — a classic symptom of locally-optimal but globally-suboptimal routing.
+- The RL agent must be able to deliver to all possible customers (not all are at a distance of <24 h by truck>), must beat ≤415.41h fleet time, and drive intersections toward 0%.
+
+---
+
+### Baseline expected results 2 — Google OR-Tools
+
+#### Hypothesis
+
+A simple, non-learning approach combining geographic clustering with greedy nearest-neighbor routing can serve as a meaningful lower bound. Any RL agent that learns meaningful routing should beat this baseline on total time and coverage, especially on harder instances.
+
+#### Experiment Setup
+
+1. Construct the routing problem using OR-Tools: Define a standard VRP with a single or multiple depots, vehicles, and distance/time cost evaluators.
+OR-Tools allows setting search limits, such as global time limits, to keep the baseline deterministic and lightweight.
+2. Generate routes using a built‑in OR-Tools first solution strategy for the dataset representative of our problem (`data_version_2`)
+3. Evaluate: total customers visited, total fleet time, percentage of intersecting route segments.
+
+#### Results
+
+| Instance | Customers visited | Total fleet time (h) | Intersections (%) |
+|---|---|---|---|
+| `data_version_2` (500 cust., 50 trucks) | **493 / 500** | 119.60 | 0.00% |
+
+#### Conclusions
+
+- The Google OR-Tools baseline demonstrated that a deterministic, heuristic‑driven routing method can already achieve reasonably coherent routes with low computational overhead. It achived stable result after 5 minutes.
+- **Route intersections (~0%)** reveals that the solutions is the optimal or close to it.
+   The RL agent must be able to deliver to all possible customers within seconds to beat the >5 minutes running time of this baseline approach.
+
+---
+
+### Experiment 1: Policy pointer network
+*It will be refered as PPN.*
+
+#### Hypothesis
+
+A minimal 10-customer, 2-truck instance is a good debugging and proof-of-concept environment. Once the code was running and results were the known expected ones then, the 500-customer, 50-truck dataset (`data_version_2`) was checked. A policy trained with vanilla REINFORCE should learn a reasonable policy and prove the environment and training loop are correct.
+
+#### Experiment Setup
+
+- **Data**: `data_version_2` — 500 customers, 5 depot, 10 trucks, 24h limit.
+- **Algorithm**: REINFORCE (policy gradient, no value baseline).
+- **Policy**: Linear embedding + pointer attention (no GNN message passing).
+- **Hyperparameters**: `lr=1e-3`, `gamma=0.99`, `episodes=1000`, `embed_dim=128`.
+- **Reward**: Visit bonus + distance penalty (no zone bonus, no fleet time terminal).
+
+#### Results
+
+| Experiment | Episodes | Total Reward | Total fleet time (h) | Customers visited | Intersections (%) | Last Loss |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: |
+| **PNN** | (results from 76) 500 | 684.08 | 466.34 | 493 | 0.04% | 8.6452 |
+
+
+The PNN experiment achieved a reward of 684.08, visiting all 493 destinations with a 0.04% intersection rate. From Figure 1 we can see that the rewards are stable but start decreasing along with total destinations with increasing episodes.
+
+![Alt text](readme_helpers/graphic_results_wandb.png)
+*Figure 1: Training results comparison from W&B.*
 
 
 
-    **Episode Termination Conditions**:
-    - **Success**: All N customers delivered + all T trucks returned to their home depots
-    - **Truncation**: Max steps exceeded (e.g., 2000 steps for large instances) → incomplete episode
-    - **Feasibility Guarantee**: With action masking, all delivered customers satisfy time windows, capacity, and access constraints
-    
-    **V0:
-    - **Success**: All N customers delivered by 1 truck T
-    - **Truncation**: Max steps exceeded (e.g., 50 steps for large instances) → incomplete episode
+#### Conclusions
+
+- The minimal instance `dataset_1` confirms that the environment and training loop are functionally correct.
+- The 10-customers instance is too small to draw generalizable conclusions but is essential for rapid iteration on architecture and reward design. Results are not shown, all metrics have significant noise.
+- Without a critic, training is slow to converge. It could be expected that reward variance is high, but it is not observed in our case.
+
+
+---
+
+### Experiment 2: Policy pointer network + A2C (`main` branch)
+*It will be refered as A2C*.
+
+#### Hypothesis
+
+The A2C agent (with critic baseline) should converge faster and achieve better solutions than REINFORCE. We expect the agent to learn geographic clustering behavior implicitly — grouping nearby customers into the same truck's route.
+
+#### Experiment Setup
+
+- **Data**: `data_version_2` — 500 customers, 5 depot, 50 trucks, 24h limit.
+- **Algorithm**: A2C (actor + critic).
+- **Policy**: `FactorizedFleetPolicy` with GNN message passing (KNN k=15).
+- **Hyperparameters**: `lr=1e-3`, `gamma=0.99`, `episodes=1000`, `embed_dim=128`, `max_extra_steps=10`,`entropy_bonus=0.07`, `value_coef=0.1`
+- **Reward**: Full reward (visit bonus + distance + zone bonus + terminal fleet time + coverage).
+
+#### Results
+
+| Experiment | Episode | Total Reward | Total fleet time (h) | Customers visited | Intersections (%) | Last Loss |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: |
+| **A2C (main branch)** | (results from 15) 500 | 768.88 | 254.02 | 493 | 0.01% | -0.0483 |
+
+The A2C experiment visited the same destinations (493) as PPN method but the total fleet time was significantly decreased from  466 to 254 h in the best episodes for PPN and A2C, respectively. From Figure 1 we can see that the rewards are stable but start decreasing along with total destinations with over 400 episodes.
+
+
+
+
+#### Conclusions
+
+- The A2C agent with critic reduces increases rewards and final metrics significantly compared to vanilla REINFORCE.
+
+---
+
+### Experiment 3: Policy pointer network + A2C + KNN
+*It will be refered as A2C+KNN*.
+
+#### Hypothesis
+
+The multi-depot, large-scale instance (data_version_2: 500 customers, 5 depots, 50 trucks) represents the target production scenario.
+
+*Step 1:*
+Construct a KNN graph where each node is connected to its N = 15 nearest neighbors. This effectively forms local clusters in which each node belongs to a group of nearby nodes (customers or depots) based on time-distance.
+
+*Step 2:*
+Build a GNN-based context using the edge_index derived from the KNN graph. Through message passing, each node aggregates information from its closest neighbors. Node features (derived from the observation space) are incorporated into the node embeddings during this process.
+
+*Step 3:*
+Apply a pointer network (dot product attention) that uses the GNN context to compute the probability distribution over possible truck selections and node destinations.
+
+*Step 4:*
+Compute the critic value to estimate the expected return of the current state.
+
+The factorized fleet action space (select truck, then select node) should remain tractable even with 50 trucks and 500 customers.
+
+Raw travel-time rewards differ drastically across data instances (short vs. long routes). If we use absolute reward values, the same hyperparameters will not transfer across instances. A **normalized reward** (zero-meaned, unit-variance via the time matrix statistics) should stabilize training across all three data versions with the same hyperparameter set.
+
+Additionally, added a small **zone bonus** (+0.15) when a truck visits a node within the KNN neighborhood of its previous stop should encourage spatially compact, efficient routes.
+
+#### Experiment Setup
+
+- **Data**: `data_version_2` — 500 customers, 5 depots, 50 trucks, 24h limit.
+- **Algorithm**: pointer network + A2C + KNN_GNN  with `FactorizedFleetPolicy`.
+- **GNN**: 1-step message passing over KNN graph (k=15), built from the travel time matrix ( matrix to get time-distances from x => y )
+- **Action masking**: inactive-trucks (trucks with completed work), visited-node and time-constraint mask (vectorized, no Python loop over trucks).
+- **Hyperparameters**: `lr=1e-3`, `gamma=0.99`, `episodes=1000`, `embed_dim=128`, `max_extra_steps=10`,`entropy_bonus=0.07`, `value_coef=0.1`
+- **Final rewards**: 
+
+| Reward | Condition | Formula | Typical value |
+|--------|---------------|---------|---------------|
+| `visit_bonus` | Visit a target node | `(global_max - global_mean) / global_std` | +0.87 |
+| `distance` | Every move | `-(travel_time - global_mean) / global_std` | −0.5 to −2.0 |
+| `zone_bonus` | Visited node is KNN-neighbor of previous | `(global_mean - global_min) / global_std` | +0.15 |
+| `noop_penalty` | Truck idles (NO-OP) | `-(global_max - global_min) / global_std` | −1.5 |
+| `coverage` | Terminal: per unvisited node | `-(global_max - global_mean) / global_std` | −0.87 × N |
+| `fleet_time` | Terminal: added to last reward | `-(fleet_time - 200) / 100 × unit` | −7.0 to +1.0 |
+
+- **Observation**: 10-dim feature vector per node (see Feature Engineering (Observation Space) section).
+
+#### Results
+
+| Experiment | Episodes | Total Reward | Total fleet time (h) | Customers visited | Intersections (%) | Last Loss |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: |
+| **A2C + kNN** | (results from 520) 1500 | 683.32 | 798.71 | 493 | 0.02% | 9.1428 |
+
+The A2C+KNN experiment visited the same destinations (493) as the other method but the total fleet time was significantly increased.  From Figure 1 we can see that the rewards are stable over 1000 episodes.
+
+
+#### Conclusions
+
+- The `data_version_2` instance is the hardest: 500 customers and 50 trucks imply a joint action space of 50 × 501 = 25,050 combinations per step.
+- The factorized policy keeps this tractable by decomposing truck selection and node selection.
+- The vectorized time-constraint masking (`_apply_time_constraints_v3`) is critical for performance at this scale — a Python loop over 50 trucks would be prohibitively slow.
+- The GNN aggregates KNN neighborhood information in a single message-passing step, giving each node an awareness of its local cluster — which helps the policy avoid routing trucks to geographically distant customers.
+- The zone bonus provides a soft inductive bias toward local routing without hardcoding any clustering step — the model learns to form geographic clusters organically.
+- A fixed visit bonus (`≈+0.87`, equal to the normalized mean travel time) ensures that visiting any customer is always better than doing nothing, preventing the policy from collapsing to the trivial "retire all trucks immediately" solution.
+- Since this approach is more complex, we observe that it requires more episodes than the previous ones (about 1000–1500) to converge. In addition, it does not always converge within the same number of hours we expect, but rather around ~100 hours
+---
+
+### Evaluation, comparison to our baseline
+
+#### Training rewards comparison
+
+Given realistic data (`dataset_3`) training across all three experiments progressed as expected, with rewards steadily increasing throughout the episodes. Although A2C+KNN was hypothesized to yield superior results due to its KNN-enriched observation space, initial findings indicate it did not outperform the standard A2C approach, as illustrated in **Figure 1**. All our models reached during training the available (due to time constraints, 24 hours for truck) customers, 493. The best total fleet time of our final accepted model was 254 hours (A2C experiment), versus 466 hours (PPN experiment) and 799 hours (A2C+KNN experiment).  Consequently, A2C experiment is used for the final performance comparison against the baseline results, and it is the stable approach on the `main` branch.
+
+**Why A2C experiment might have outperformed A2C+KNN**
+
+- Context Imbalance: Over-prioritizing local KNN features may have caused the model to lose the global fleet status necessary for overall route optimization.
+- Increased Complexity: Higher parameter counts and a complex gradient path slowed convergence, likely leaving the model in a sub-optimal state compared to A2C experiment.
+- Feature Redundancy: Existing distance-based features (e.g., min_dist_depot) already capture spatial data, making the KNN enrichment potentially redundant or noisy.
+- Masking Dominance: Strong action masks for visited nodes and time constraints handle the primary routing logic, limiting the marginal benefit of advanced spatial representations.
+
+#### Evaluation, comparison to `Baseline 2 approach, benchmark`
+
+To evaluate our best-performing **A2C model**, we conducted inference (using frozen weights) on a realistic, unseen dataset with a **variable number of customers**.
+
+With an execution time of just **2-3 seconds**, A2C significantly outperforms the benchmark in **computational speed**. A2C achieves full coverage (visiting all feasible customers) almost instantly, whereas OR-Tools requires more than 10 seconds to achieve full coverage for instances with more than 295 customers. This near-instant inference is critical for **offline applications on edge devices** with limited compute power.
+
+However, in terms of **routing efficiency** (total fleet hours), OR-Tools consistently provides more optimized solutions across all time limits (1s, 10s, and 60s). As shown in the **'Ratio OT/RL'** columns, while the RL approach is superior for speed and coverage, OR-Tools remains more effective at minimizing global fleet costs when allowed more computation time.
+
+
+
+
+![Alt text](readme_helpers/general_table_comparison_v2.png)
+*Figure 2: Training results comparison between A2C verus Google OR-Tools (Baseline 2 approach, benchmark).*
 
 
 
 
 
-- **Policy Architecture**:
-  - Transformer/Pointer Network for constructive routing.
-  - GNN for relational constraints and edge scoring.
-- **RL Algorithm**:
-  - PPO or Actor–Critic (policy gradient with baseline).
-- **Reward**:
-  - Negative travel time/distance.
-  - Penalty for infeasible packing or constraint violations.
-  - Bonus for completing all jobs with zero violations.
-- **Note**: 
-  - Modular: Routing RL can be trained independently; packing added later
-  - GNN-friendly: Graph structure naturally encodes customer relationships
-  - Feasibility-first: Hard constraints (masking + large penalties) ensure no violations escape to production
-  - Real-world aligned: Reflects actual dispatch decisions (pick next customer) + cost objectives
+
+
+
 
 
 
 
 ---
 
-## 4. Recommended Approach (Production-Proven)
-**Hybrid: DL Constructor → Feasibility Repair → OR Refinement**
-1. **Neural Constructor**: Transformer encoder–decoder with constraint-aware masking for capacity, time windows, and delivery precedence.
-2. **Training**: Policy gradient (REINFORCE with self-critic) + curriculum on instance sizes and constraint densities.
-3. **Validator/Repair**: Enforce hard constraints; insert/relocate to fix time-window or precedence issues; packing feasibility check.
-4. **OR Local Search (short budget)**: Guided Local Search; neighborhood moves (2-opt, 3-opt, relocate, swap) for 1–10 seconds.
-5. **Distillation (optional)**: Fine-tune the constructor on OR-refined routes to close the optimality gap while retaining speed.
+## Running the Code
 
-**When to use what**
-- Static VRP with tight constraints → **OR-only** baseline first.
-- Many similar instances or latency-critical decisions → **DL + Repair + OR** hybrid.
-- Dynamic/online routing → **RL dispatch/insertion + rolling-horizon OR**.
-- Very large graphs → **GNN-guided neighborhoods** to scale.
+### Requirements
 
----
+- Python ≥ 3.9
+- [Poetry](https://python-poetry.org/) (package manager)
 
-## 5. Data & Features
-- Job data: demand, delivery locations, ready/due day, service times.
-- Vehicles: capacities, skills, compatibility, breaks/hours.
-- Distance/Time: matrices by time-of-day or features from a road graph.
-- Packing: item dimensions, weight, stacking rules, fragility, orientation.
-- Objectives: minimize cost (distance + time), maximize truck utilization, respect SLA lateness constraints, CO₂/fairness weights (V3+).
+### Installation
 
----
+```bash
+# Clone the repository
+git clone <repository_url>
+cd routing-model-2025
 
-## 6. Steps & Algorithms
-### Step 1: Data Generation
-- Synthetic instances: random coordinates, deliveries, item dimensions.
-- Curriculum: sizes from N=50…500; vary constraint densities.
+# Install all packages (monorepo with three interdependent packages)
+poetry install
+```
 
-### Step 2: Packing Module
-- Heuristic: shelf or guillotine algorithms for 3D packing.
-- Optional: small neural policy for item placement; integrate feasibility checks.
+This installs `logisticsrl-lib`, `loader-lib`, and `common-lib` in develop mode.
 
-### Step 3: Routing Module
-- DL constructor (Transformer/PointerNet) or RL policy.
-- Constraint masking for capacity, time windows, and precedence.
+### Training
 
-### Step 4: Integration
-- Combine routing (and V2-packing feasibility checks).
-- Run validator/repair; then a short OR local search for final quality.
+Run with default settings (`data_version_2`, 1000 episodes, W&B enabled):
 
-### Step 5: Evaluation
-- Metrics: total cost (distance + time), average truck utilization, % feasible routes, lateness.
-- Runtime distribution (p50, p95); per-instance gap to best-known baseline.
+```bash
+poetry run train
+```
 
----
+Run with custom hyperparameters:
 
-## 7. Training & Benchmark Plan (6–8 Weeks)
-**Weeks 1–2: Problem framing & baselines**
-- Freeze constraints/objective; build a simulator/generator aligned with real distributions.
-- Establish OR baselines (e.g., CP-SAT/Guided Local Search) and log metrics.
+```bash
+poetry run train --lr 5e-4 --episodes 500 --data_dir data_version_2 --seed 42
+```
 
-**Weeks 3–4: First DL model**
-- Implement attention model with constraint masks (capacity, time windows, precedence).
-- Train with REINFORCE + self-critic on mixed synthetic/real instances.
-- Add feasibility repair and 1–5s local search.
+Disable W&B logging (local run):
 
-**Weeks 5–6: Hybrid improvements**
-- Distill OR-refined routes (imitation learning).
-- Add features: time-of-day travel times, service priorities, soft penalties.
-- Target <3–5% optimality gap with 10×–100× speedup vs OR-only.
+```bash
+poetry run train --no-wandb
+```
 
-**Weeks 7–8: Production readiness**
-- Guardrails: hard-constraint validator, uncertainty-based fallback to OR-only.
-- Monitoring: drift detection and monthly fine-tuning with operational data.
+Available arguments:
 
----
+| Argument | Default | Description |
+|---|---|---|
+| `--lr` | `1e-3` | Learning rate |
+| `--episodes` | `1000` | Number of training episodes |
+| `--embed_dim` | `128` | GNN/policy embedding dimension |
+| `--seed` | `42` | Random seed |
+| `--data_dir` | `data_version_2` | Dataset to use (`data_version_1/2/3`) |
+| `--device` | auto | `cuda` or `cpu` |
+| `--no-wandb` | — | Flag to disable W&B logging |
 
-## 8. Evaluation Metrics
-- **Routing**: total distance/time cost, average truck utilization (%), lateness, missed windows (must be zero after repair).
-- **Packing**: feasibility rate, utilization, violation types (overstack, orientation).
-- **Operational**: runtime p50/p95, % instances solved within SLA, gap to baseline.
-- **Robustness**: stress tests—peak loads, extreme time windows, long-tail distances; generalization to new depots/sizes.
+### Running the Baseline Greedy Benchmark
+
+```bash
+poetry run benchmarks --data_dir data_version_2
+```
+
+This runs the KMeans + Greedy baseline and saves:
+- Console output with per-cluster route summaries.
+- `checkpoints/clusters_visualization.png` — scatter plot of customer clusters.
+- `checkpoints/viz_kmeans_and_greedy_<data_dir>.html` — interactive route map.
+
+### Running the SOTA (Google OR-Tools)
+
+```bash
+poetry run benchmarks_2
+```
+
+This runs the SOTA OR-Tools
 
 ---
 
-## 9. Code Skeletons
-*(Production-friendly with type hints, dataclasses, and logging)*  
-Includes:
-- Constraint-aware policy (PyTorch-style).
-- Training loop (policy gradient skeleton).
-- Packing & integration skeleton.
-- OR refinement conceptual notes.
+## Final Conclusions
 
----
+This project demonstrates that **Reinforcement Learning can learn meaningful routing policies for multi-depot, multi-truck VRP instances** using a combination of:
 
-## 10. Deliverables
-- Code: environment, policy, packing module, validator, OR integration hooks.
-- Report: algorithm choices, training curves, ablations, evaluation vs baselines.
-- Demo: route visualization and packing layout.
+1. **Graph Neural Networks** for spatially-aware node representations.
+2. **Factorized action selection** to keep the action space tractable.
+3. **Action masking** to guarantee feasibility without penalizing hard constraints in the reward.
+4. **Normalized, shaped rewards** to stabilize training across different instance scales.
 
----
+**Key lessons learned:**
 
-## 11. Extensions
-- Multi-truck, multi-depot, heterogeneous fleet.
-- Packing goods into pallets.
-- Time windows and driver hours-of-service.
-- Learned packing policy and dock scheduling.
+- **Reward engineering is critical.** The routing task has sparse, delayed signals (most reward comes at episode end). Introducing per-step signals (visit bonus, distance, zone bonus) was essential for learning to take off.
+- **Normalization enables transfer.** Normalizing rewards by the time-matrix statistics allows the same hyperparameter configuration to work across instances with very different travel-time scales.
+- **The Google OR-Tools is a strong bar.** It achieves all deliverable customers (493/500) within 5 minutes of compute time. Beating it in total fleet time requires the RL agent to plan globally — which is precisely what the GNN enables.
 
----
 
-## 12. Common Pitfalls & Mitigations
-- **Feasibility leakage** → Always run validator + repair; never ship routes with violations.
-- **Distribution shift** → Train on mixed synthetic + real; schedule monthly fine-tunes.
-- **Overfitting to size** → Curriculum across instance sizes; test generalization.
-``
+**Open challenges and future directions:**
+
+- **Customer constraints**: The full problem includes additional restrictions on truck access to certain customers. Due to road access limitations, not all trucks can reach all customers.
+- **Capacity constraints**: Adding real truck capacity constraint is another major constraint to incorporate.
+- **Time windows**: Adding delivery time windows per customer is another major constraint to incorporate.
+- **Generalization to unseen instances**: The current model is trained on fixed instances. Training on randomly generated instances (curriculum learning) would improve generalization.
+- **Improving Experiment 3**: Experiment 3 could implement a multi-layer GNN architecture (e.g., GAT) using edge costs and dynamic graph updates to better capture spatial dependencies as nodes are visited. Additionally, integrating local zone-based attention with global context pooling will allow the model to balance localized route efficiency with global fleet optimization.
+
+
 
 
 ---
-## 13. Simplifications
-  Only 1 truck, and 1 depot
-  Remove packing/pallets section
-  Remove client type distinctions
-  Remove time windows
-  Remove driver hour limits
-  Simplify the truck state (no elapsed time, no time window constraints)
-  Simplify customer features (no time windows, no client type)
-  Simplify action masking (no time window checks, no hour limit checks)
-  Simplify reward functions (remove time-based penalties)
+
+## References
+### Neural Routing Foundations
+
+- Kwon et al. (2020). *POMO: Policy Optimization with Multiple Optima for Reinforcement Learning.* NeurIPS. https://proceedings.neurips.cc/paper/2020/hash/f231f2107df69eab0a3862d50018a9b2-Abstract.html
+- Kool et al. (2022). *Deep Policy Dynamic Programming for Vehicle Routing Problems.* CPAIOR. https://wouterkool.github.io/pdf/paper-dpdp-final.pdf
+- Hottung & Tierney (2022). *Efficient Active Search for Combinatorial Optimization Problems.* ICLR. https://openreview.net/forum?id=nO5caZwFwYu
+
+### Multi-Depot VRP with GNNs
+
+- Zhang et al. (2023). *Graph Attention Reinforcement Learning with Flexible Matching Policies for Multi-Depot Vehicle Routing Problems.* Physica A. https://ui.adsabs.harvard.edu/abs/2023PhyA..61128451Z/abstract
+- Zong et al. (2024). *Multi-Type Attention for Solving Multi-Depot Vehicle Routing Problems.* IEEE. https://ieeexplore.ieee.org/document/10568457
+- Gama et al. (2024). *DeepMDV: Learning Global Matching for Multi-Depot Vehicle Routing Problems.* arXiv:2411.17080. https://arxiv.org/html/2411.17080v2
+
+### Action Masking & Feasibility
+
+- Bono et al. (2023). *NeuOpt: Learning to Improve Feasible Solutions.* NeurIPS. https://proceedings.neurips.cc/paper_files/paper/2023/file/9bae70d354793a95fa18751888cea07d-Paper-Conference.pdf
+- Liu et al. (2024). *PARCO: Learning Parallel Autoregressive Policies for Efficient Multi-Agent Combinatorial Optimization.* arXiv:2409.03811. https://arxiv.org/html/2409.03811v1
+
+### Surveys
+
+- Bogyrbayeva et al. (2022). *A Survey on Machine Learning Methods for the Vehicle Routing Problem.* IEEE Transactions on Intelligent Transportation Systems. https://ieeexplore.ieee.org/document/10379532
+- Liu et al. (2025). *Reinforcement Learning for the Vehicle Routing Problem: Methodologies, Applications, and Research Outlook.* Arabian Journal for Science and Engineering, Springer. https://link.springer.com/article/10.1007/s13369-025-10744-3
+
+### Other resources
+
+- https://developers.google.com/optimization/routing

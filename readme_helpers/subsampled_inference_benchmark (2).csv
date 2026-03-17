@@ -1,0 +1,13 @@
+Number of customers;"Reinforcement learning (RL) evaluation - 
+Experiment 2 (actor-to-critic)";;;Baseline OR-Tools (OT) execution for 1 second;;;Baseline OR-Tools (OT) execution for 10 seconds;;;Baseline OR-Tools (OT) execution for 60 seconds;;
+;RL inference execution time;RL  visited customers;RL total fleet travel time;OT1 visited customers;OT1 total fleet travel time;Ratio OT1sec/RL;OT10 visited customers;OT10 total fleet travel time;Ratio OT10sec/RL;OT60  visited customers;OT60 total fleet travel time;Ratio OT60sec/RL
+50;0.331s;44;57.54;44;31.45;1.830;44;31.45;1.830;44;31.45;1.830
+100;0.585s;94;111.27;94;58.80;1.892;94;52.30;2.128;94;52.05;2.138
+150;1.141s;143;136.98;143;70.34;1.947;143;66.46;2.061;143;66.46;2.061
+200;1.277s;192;159.91;192;96.58;1.656;192;80.39;1.989;192;78.96;2.025
+250;1.602s;241;186.74;166;34.86;5.357;241;92.44;2.020;241;85.94;2.173
+300;2.138s;291;209.92;103;17.00;12.348;291;105.72;1.986;291;99.42;2.111
+350;2.942s;339;214.13;53;7.61;28.138;339;126.29;1.696;339;109.26;1.960
+400;2.645s;389;236.11;51;6.96;33.924;389;133.94;1.763;389;113.40;2.082
+450;3.120s;439;255.94;58;7.92;32.316;439;142.91;1.791;439;115.48;2.216
+500;3.458s;488;272.60;58;7.47;36.493;488;176.24;1.547;488;133.85;2.037
