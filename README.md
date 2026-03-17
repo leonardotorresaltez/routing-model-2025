@@ -273,7 +273,7 @@ The PNN experiment achieved a reward of 684.08, visiting all 493 destinations wi
 
 #### Conclusions
 
-- The minimal instance `dataset_1` confirms that the environment and training loop are functionally correct.
+- The minimal instance `data_version_1` confirms that the environment and training loop are functionally correct.
 - The 10-customers instance is too small to draw generalizable conclusions but is essential for rapid iteration on architecture and reward design. Results are not shown, all metrics have significant noise.
 - Without a critic, training is slow to converge. It could be expected that reward variance is high, but it is not observed in our case.
 
@@ -381,7 +381,7 @@ The A2C+KNN experiment visited the same destinations (493) as the other method b
 
 #### Training rewards comparison
 
-Given realistic data (`dataset_3`) training across all three experiments progressed as expected, with rewards steadily increasing throughout the episodes. Although A2C+KNN was hypothesized to yield superior results due to its KNN-enriched observation space, initial findings indicate it did not outperform the standard A2C approach, as illustrated in **Figure 1**. All our models reached during training the available (due to time constraints, 24 hours for truck) customers, 493. The best total fleet time of our final accepted model was 254 hours (A2C experiment), versus 466 hours (PPN experiment) and 799 hours (A2C+KNN experiment).  Consequently, A2C experiment is used for the final performance comparison against the baseline results, and it is the stable approach on the `main` branch.
+Given realistic data (`data_version_2`) training across all three experiments progressed as expected, with rewards steadily increasing throughout the episodes. Although A2C+KNN was hypothesized to yield superior results due to its KNN-enriched observation space, initial findings indicate it did not outperform the standard A2C approach, as illustrated in **Figure 1**. All our models reached during training the available (due to time constraints, 24 hours for truck) customers, 493. The best total fleet time of our final accepted model was 254 hours (A2C experiment), versus 466 hours (PPN experiment) and 799 hours (A2C+KNN experiment).  Consequently, A2C experiment is used for the final performance comparison against the baseline results, and it is the stable approach on the `main` branch.
 
 **Why A2C experiment might have outperformed A2C+KNN**
 
