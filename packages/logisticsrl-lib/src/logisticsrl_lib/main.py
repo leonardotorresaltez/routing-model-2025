@@ -136,21 +136,6 @@ def train():
                 cfg,
                 agent
             )
-
-        report(
-            episode,
-            episode_reward,
-            loss,
-            total_time,
-            total_destinations_visited,
-            pct_intersections,
-            env,
-            data,
-            truck_starts,
-            pbar,
-            cfg,
-            agent
-        )
              
                         
 
