@@ -504,9 +504,9 @@ For each episode :
 
 | Experiment | Episodes | Total Reward | Total fleet time (h) | Customers visited | Intersections (%) | Last Loss |
 | :--- | :---: | :---: | :---: | :---: | :---: | :---: |
-| **PPN + A2C + kNN** | (results from 520) 1500 | 683.32 | 798.71 | 493 | 0.02% | 9.1428 |
+| **PPN + A2C + kNN_GNN** | (results from 520) 1500 | 683.32 | 798.71 | 493 | 0.02% | 9.1428 |
 
-The PPN+A2C+KNN experiment visited the same destinations (493) as the other method but the total fleet time was significantly increased.  From Figure 1 we can see that the rewards are stable over 1000 episodes.
+The PPN+A2C+KNN_GNN experiment visited the same destinations (493) as the other method but the total fleet time was significantly increased.  From Figure 1 we can see that the rewards are stable over 1000 episodes.
 
 
 #### Conclusions
