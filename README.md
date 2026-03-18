@@ -183,6 +183,14 @@ A minimal 10-customer, 2-truck instance is a good debugging and proof-of-concept
 - **Observation**: 10-dim feature vector per node (see Feature Engineering (Observation Space) section).
 
 
+#### Reward Function
+
+| Component | When | Formula |
+|---|---|---|
+| **Visit bonus** | Per customer visited | `≈ +0.87` (normalized) |
+| **Distance penalty** | Per step | `-(travel_time - μ) / σ` |
+| **NO-OP penalty** | Per truck retired | `-1.5` |
+
 ### Policy Network
 
 ```
@@ -391,27 +399,69 @@ All per-step rewards are **normalized** using the global mean and standard devia
 #### Policy Network
 
 ```
-Input: 10-dim features per node (** from observation space, see previous section)
+Input: 10-dim features per node
+       [coords(2), is_target(1), visited(1), active_ratio(1),
+        avg_fleet_time_norm(1), max_fleet_time_norm(1),
+        home_counts(1), min_dist_depot(1), min_dist_truck(1)]
          ↓
-   Linear Embedding (→ 128-dim)
+┌─────────────────────────────────────────┐
+│   Linear Embedding  [N,10] → [N,128]    │
+└─────────────────────────────────────────┘
          ↓
-   GNN Message Passing (1 step, KNN graph, k=15) - not in `main` branch
+┌─────────────────────────────────────────┐
+│   GNN Message Passing  (1 layer)        │
+│   Precomputed KNN graph (k=15,          │
+│   based on travel time matrix)          │
+│                                         │
+│   agg[i] = mean( h[neighbors of i] )   │
+│   out[i]  = ReLU(Linear(LayerNorm(agg)))│
+│   h       = h + out   (residual)        │
+└─────────────────────────────────────────┘
          ↓
-   Global Graph Context (mean pooling)
+┌─────────────────────────────────────────┐
+│   Global Graph Context                  │
+│   graph_ctx = mean(h)   → [128]         │
+└─────────────────────────────────────────┘
          ↓
- ┌───────────────────────────────────┐
- │  TRUCK SELECTION (pointer head)   │
- │  Scores each truck via dot-product│
- │  attention + inactive truck mask  │
- └─────────────┬─────────────────────┘
+┌─────────────────────────────────────────┐
+│   Truck Embeddings                      │
+│   truck_h = h[truck_positions] → [T,128]│
+│   (embedding of each truck's current    │
+│    position node)                       │
+└──────────────┬──────────────────────────┘
                │
- ┌─────────────▼─────────────────────┐
- │  NODE SELECTION (pointer head)    │
- │  Scores each node via dot-product │
- │  attention + visited/time mask    │
- └───────────────────────────────────┘
-         ↓
-   Value Head (critic, for A2C)
+     ┌─────────▼──────────────────────────┐
+     │   TRUCK SELECTION (pointer head)   │
+     │                                    │
+     │   tq = truck_query(truck_h +       │
+     │                    graph_ctx)      │
+     │   tk = truck_key(truck_h)          │
+     │   score[t] = sum(tq[t] * tk[t])   │
+     │                                    │
+     │   mask: inactive trucks → -1e9     │
+     │   softmax → truck_probs [T]        │
+     └─────────┬──────────────────────────┘
+               │ selected truck
+     ┌─────────▼──────────────────────────┐
+     │   NODE SELECTION (pointer head)    │
+     │                                    │
+     │   Q = query(truck_h + graph_ctx)   │
+     │                        → [T, 128]  │
+     │   K = key(h)  → [N, 128]          │
+     │   scores = Q @ K.T   → [T, N]     │
+     │                                    │
+     │   mask: visited + time → -1e9      │
+     │   softmax → node_probs [T, N]      │
+     │   → use node_probs[truck]          │
+     └─────────┬──────────────────────────┘
+               │
+     ┌─────────▼──────────────────────────┐
+     │   Value Head  (A2C critic)         │
+     │   input: graph_ctx [128]           │
+     │   Linear(128→128) + ReLU           │
+     │   Linear(128→1)                    │
+     │   → V(s)  scalar                   │
+     └────────────────────────────────────┘
 ```
 
 
