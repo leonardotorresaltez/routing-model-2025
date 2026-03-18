@@ -600,6 +600,11 @@ Disable W&B logging (local run):
 poetry run train --no-wandb
 ```
 
+Run in google colab:
+```bash
+https://github.com/leonardotorresaltez/routing-model-2025/blob/main/notebooks/train_in_google_colab.ipynb
+```
+
 Available arguments:
 
 | Argument | Default | Description |
