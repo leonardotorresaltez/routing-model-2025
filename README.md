@@ -33,7 +33,7 @@ This project tackles a real-world logistics optimization problem: **how do you p
 This problem is known as the **Multi-Depot Vehicle Routing Problem (MDVRP)**, a variant of the classical VRP that has been studied for decades. Classical solvers (e.g., OR-Tools, CPLEX) can find near-optimal solutions but are slow and expensive to run on large instances. **Deep Learning** offers a compelling alternative: train a model once, and at inference time generate good-quality routes in milliseconds.
 
 Our final approach (`main` branch) combines:
-- A **custom Gymnasium environment** that simulates the fleet routing process step by step.
+- A **custom Gymnasium framework environment** that simulates the fleet routing process step by step.
 - A **Pointer Network with Cross-Attention** that learns to select which truck to dispatch and which customer to visit next by "pointing" to destinations.
 - A **policy gradient algorithm (A2C)** to train the policy from experience.
 
@@ -42,11 +42,16 @@ Our final approach (`main` branch) combines:
 
 ## Problem Statement
 
+### Glossary of terms
+- node: can be a customer node (delivery location) or a depot.
+- Gymnasium: pyhton framework to implement reinforce learning.
+- NO-OP: In our context, it is the state that indicates a truck can no longer move.
+
 ### Objective
 
 Given a set of customers (delivery locations) and a fleet of trucks starting from one or more depots:
 
-1. **Visit all possible customers** — every delivery must be completed, when restrictions allow it.
+1. **Visit all possible customers** — every delivery **must** be completed, when restrictions allow it.
 2. **Minimize total fleet travel time** — sum of all truck travel times.
 3. **Respect the daily time limit** — each truck has a maximum working day (12 or 24 hours).
 
@@ -82,12 +87,12 @@ Each instance includes:
 
 ## Architecture
 
-### Environment (`TSPEnv`)
+### Environment (`class TSPEnv`)
 
 A Gymnasium-compatible environment that wraps the routing problem as a Markov Decision Process:
 
 - **State**: For each step, the agent observes node coordinates, which nodes have been visited, current truck positions, truck elapsed times, and a full travel time matrix.
-- **Action**: A joint `(truck_id, node_id)` pair — select which truck to dispatch and which customer it should visit next. A special `NO-OP` action allows a truck to retire when it is no longer efficient.
+- **Action**: A joint `(truck_id, node_id)` pair — select which truck to dispatch and which customer it should visit next. A special `NO-OP` action allows a truck to retire once it reaches its maximum working time (12 or 24 hours).
 - **Episode end**: All customers visited or trucks not being able accept customers considering the daily time limit (truncation).
 
 ### Observation Space
@@ -120,8 +125,8 @@ Each node is represented by a **10-dimensional feature vector**:
 
 
 **Key design choices:**
-- **Factorized action selection**: truck and node are selected independently but jointly scored, keeping the action space manageable.
-- **Action masking**: infeasible actions (already-visited customers, time-limit violations) are masked to `-1e9` before softmax — the policy only learns from valid assignments.
+- **Factorized action selection**: truck and node are selected independently but jointly evaluated by the critic when using an actor–critic approach, keeping the action space manageable.
+- **Action masking**: infeasible actions (already-visited customers, time-limit violations, NO-OP trucks) are masked to `-1e9` before softmax — the policy only learns from valid assignments.
 
 
 
@@ -243,7 +248,7 @@ The PNN experiment achieved a reward of 684.08, visiting all 493 destinations wi
 
 ---
 
-### Experiment 2: Policy Pointer Network - A2C
+### Experiment 2: Policy Pointer Network + A2C
 *It will be refered as PPN+A2C*.
 
 #### Hypothesis
@@ -254,7 +259,7 @@ The A2C agent (with critic baseline) should converge faster and achieve better s
 
 - **Data**: `data_version_2` — 500 customers, 5 depot, 50 trucks, 24h limit.
 - **Algorithm**: A2C (actor + critic).
-- **Policy**: `FactorizedFleetPolicy` with GNN message passing (KNN k=15).
+- **Policy**: `FactorizedFleetPolicy class`. Added a critic head
 - **Hyperparameters**: `lr=1e-3`, `gamma=0.99`, `episodes=1000`, `embed_dim=128`, `max_extra_steps=10`,`entropy_bonus=0.07`, `value_coef=0.1`
 - **Observation**: 10-dim feature vector per node (see Feature Engineering (Observation Space) section).
 
@@ -265,7 +270,6 @@ The A2C agent (with critic baseline) should converge faster and achieve better s
 |---|---|---|
 | **Visit bonus** | Per customer visited | `≈ +0.87` (normalized) |
 | **Distance penalty** | Per step | `-(travel_time - μ) / σ` |
-| **Zone bonus** | Per step (if neighbor) | `+0.15` if next node is in KNN(prev_node) |
 | **NO-OP penalty** | Per truck retired | `-1.5` |
 | **Fleet time reward** | Terminal | `-(total_fleet_time - 400h) / 100`, clipped [-5, +2] |
 | **Coverage penalty** | Terminal | `-0.87 × n_unvisited` |
@@ -299,7 +303,7 @@ Input: 10-dim features per node (from observation space)
  │  Scores via dot-product attention + mask │
  └──────────────────────────────────────────┘
          ↓
-   Value Head (critic, for A2C)
+   Truck Value Head + Node Value Head + Critic Head (for A2C)
 ```
 
 #### Training Algorithm
@@ -335,8 +339,8 @@ The PPN+A2C experiment visited the same destinations (493) as PPN method but the
 
 ---
 
-### Experiment 3: Policy Pointer Network - A2C - KNN
-*It will be refered as PPN+A2C+KNN*.
+### Experiment 3: Policy Pointer Network + A2C + KNN_GNN
+*It will be refered as PPN+A2C+KNN_GNN*.
 
 #### Hypothesis
 
