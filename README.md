@@ -354,21 +354,9 @@ The PPN+A2C experiment visited the same destinations (493) as PPN method but the
 
 The multi-depot, large-scale instance (data_version_2: 500 customers, 5 depots, 50 trucks) represents the target production scenario.
 
-*Step 1:*
-Construct a KNN graph where each node is connected to its N = 15 nearest neighbors. This effectively forms local clusters in which each node belongs to a group of nearby nodes (customers or depots) based on time-distance.
-
-*Step 2:*
-Build a GNN-based context using the edge_index derived from the KNN graph. Through message passing, each node aggregates information from its closest neighbors. Node features (derived from the observation space) are incorporated into the node embeddings during this process.
-
-*Step 3:*
-Apply a pointer network (dot product attention) that uses the GNN context to compute the probability distribution over possible truck selections and node destinations.
-
-*Step 4:*
-Compute the critic value to estimate the expected return of the current state.
-
 The factorized fleet action space (select truck, then select node) should remain tractable even with 50 trucks and 500 customers.
 
-Raw travel-time rewards differ drastically across data instances (short vs. long routes). If we use absolute reward values, the same hyperparameters will not transfer across instances. A **normalized reward** (zero-meaned, unit-variance via the time matrix statistics) should stabilize training across all three data versions with the same hyperparameter set.
+In this approach, the nodes are grouped by distance (KNN with K = 15). This is then used to construct a GNN with a single message-passing step, allowing for the modeling of more complex patterns in the future, such as depots with different capacities. 
 
 Additionally, added a small **zone bonus** (+0.15) when a truck visits a node within the KNN neighborhood of its previous stop should encourage spatially compact, efficient routes.
 
@@ -376,7 +364,7 @@ Additionally, added a small **zone bonus** (+0.15) when a truck visits a node wi
 
 - **Data**: `data_version_2` — 500 customers, 5 depots, 50 trucks, 24h limit.
 - **Algorithm**: pointer network + A2C + KNN_GNN  with `FactorizedFleetPolicy`.
-- **GNN**: 1-step message passing over KNN graph (k=15), built from the travel time matrix ( matrix to get time-distances from x => y )
+- **KNN_GNN**: 1-step message passing over KNN graph (k=15), built from the travel time matrix ( matrix to get time-distances from x => y )
 - **Action masking**: inactive-trucks (trucks with completed work), visited-node and time-constraint mask (vectorized, no Python loop over trucks).
 - **Hyperparameters**: `lr=1e-3`, `gamma=0.99`, `episodes=1000`, `embed_dim=128`, `max_extra_steps=10`,`entropy_bonus=0.07`, `value_coef=0.1`
 - **Observation**: 10-dim feature vector per node (see Feature Engineering (Observation Space) section).
@@ -465,20 +453,49 @@ Input: 10-dim features per node
 ```
 
 
+
+
 #### Training Algorithm
 
 ```
-For each episode:
-  1. Build K-Nearest Neighbors (KNN) Graph (k=15, Euclidean distance)
-  2. Roll out episode using Policy Network with 1-step GNN Message Passing
-  3. Compute discounted returns G_t for each step
-  4. Compute advantages: A_t = G_t - V(s_t)   (using critic baseline)
-  5. Actor loss:  L_actor  = -E[log π(a|s) · A_t]
-  6. Critic loss: L_critic = MSE(V(s_t), G_t)
-  7. Entropy bonus: L_ent  = -E[H(π)]         (exploration)
-  8. Total loss = L_actor + 0.1 · L_critic + 0.07 · L_ent
-  9. Gradient clipping (max_norm = 0.5)
- 10. Cosine annealing LR schedule
+Before training:
+  1. Precompute KNN graph once (k=15, based on travel time matrix)
+     → edge_index  [2, E]   used by GNN message passing
+     → knn_neighbors [N]    used by zone bonus reward
+
+For each episode :
+  2. Reset environment — all trucks at their depots, all nodes unvisited
+
+  3. Roll out episode step by step until done:
+     a. Build 10-dim feature vector per node (coords, visited status,
+        fleet stats, distances)
+     b. Forward pass through Policy Network → truck_probs, node_probs, V(s)
+     c. Sample truck ~ Categorical(truck_probs)  [inactive trucks masked]
+     d. Sample node  ~ Categorical(node_probs[truck])  [visited + time masked]
+        → NO-OP if all nodes masked for that truck
+     e. Step environment → compute reward:
+          + visit_bonus        if node delivered
+          + zone_bonus (+0.15) if node is within KNN zone of previous node
+          - distance_penalty   normalized travel time to selected node
+          + terminal_bonus     fleet_time + coverage penalty (at episode end)
+
+  4. Compute discounted returns G_t (backward, γ=0.99):
+        G_T = terminal_bonus
+        G_t = r_t + 0.99 · G_{t+1}
+
+  5. Normalize advantages:
+        A_t = (G_t - V(s_t) - mean(A)) / std(A)
+
+  6. Compute losses:
+        L_actor  = -mean[ log π(a|s) · A_t ]
+        L_critic =  MSE( V(s_t), G_t )
+        L_entropy = -mean[ H(π_truck) + H(π_node) ]
+
+        L_total = L_actor + 0.1 · L_critic + 0.07 · L_entropy
+
+  7. Backprop + gradient clipping (max_norm = 0.5)
+
+  8. Cosine annealing LR schedule (1e-3 → 1e-5 over 1500 episodes)
 ```
 
 
@@ -646,6 +663,7 @@ This project demonstrates that **Reinforcement Learning can learn meaningful rou
 - Zhang et al. (2023). *Graph Attention Reinforcement Learning with Flexible Matching Policies for Multi-Depot Vehicle Routing Problems.* Physica A. https://ui.adsabs.harvard.edu/abs/2023PhyA..61128451Z/abstract
 - Zong et al. (2024). *Multi-Type Attention for Solving Multi-Depot Vehicle Routing Problems.* IEEE. https://ieeexplore.ieee.org/document/10568457
 - Gama et al. (2024). *DeepMDV: Learning Global Matching for Multi-Depot Vehicle Routing Problems.* arXiv:2411.17080. https://arxiv.org/html/2411.17080v2
+- GASE (2024): Graph Attention Sampling with Edges Fusion for Solving Vehicle Routing Problems https://arxiv.org/pdf/2405.12475
 
 ### Action Masking & Feasibility
 
